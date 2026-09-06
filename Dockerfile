@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm PATH=$PNPM_HOME:$PATH
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@11.5.0 --activate
 
 # ── deps: install all dependencies (incl. devDeps for the prisma CLI) ─────────
 FROM base AS deps

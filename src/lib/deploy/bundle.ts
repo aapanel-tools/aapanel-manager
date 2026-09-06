@@ -1,7 +1,8 @@
 import 'server-only';
 import {createHash} from 'node:crypto';
 import {createReadStream, createWriteStream} from 'node:fs';
-import {mkdir, rm} from 'node:fs/promises';
+import {copyFile, mkdir, rm, stat} from 'node:fs/promises';
+import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
@@ -82,6 +83,44 @@ export async function extractTarGz(tarPath: string, destDir: string): Promise<vo
     await execFileAsync('tar', ['-xzf', tarPath, '-C', destDir]);
   } catch (err) {
     throw new Error(`Extract failed: ${err instanceof Error ? err.message : 'tar error'}`);
+  }
+}
+
+/**
+ * Result of carrying configuration into a freshly unpacked release.
+ * - `copied` — the running release's `.env` was copied over;
+ * - `kept`   — the new release already has a `.env`; left untouched;
+ * - `absent` — the running release has no `.env`, so its configuration comes
+ *   from the process environment (Docker, systemd, or the variables of the
+ *   aaPanel Node project). The new release inherits the same environment,
+ *   so there is nothing to carry.
+ */
+export type CarriedConfig = 'copied' | 'kept' | 'absent';
+
+/**
+ * Copies `.env` from the running release into a freshly unpacked one.
+ *
+ * Every release is its own directory and `scripts/run-next.mjs` loads `.env`
+ * from the working directory. Without this step the new version boots with no
+ * DATABASE_URL and dies immediately after the symlink swap — at the one moment
+ * the rollback button is unreachable, because the panel that hosts it is the
+ * process that just failed to start. Staging is reversible; that is not.
+ */
+export async function carryEnvFile(fromDir: string, toDir: string): Promise<CarriedConfig> {
+  const src = path.join(fromDir, '.env');
+  const dest = path.join(toDir, '.env');
+  if (await pathExists(dest)) return 'kept';
+  if (!(await pathExists(src))) return 'absent';
+  await copyFile(src, dest);
+  return 'copied';
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
   }
 }
 

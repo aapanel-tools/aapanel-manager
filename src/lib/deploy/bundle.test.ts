@@ -1,13 +1,13 @@
 import {describe, it, expect, vi, afterEach} from 'vitest';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {writeFile, rm} from 'node:fs/promises';
+import {writeFile, readFile, mkdir, rm} from 'node:fs/promises';
 
 // `server-only` throws under the test runner; neutralize it for bundle.ts (IO).
 vi.mock('server-only', () => ({}));
 
 import {findBundleAssets, parseChecksumFile, sha256Hex} from './bundle-assets';
-import {sha256OfFile} from './bundle';
+import {sha256OfFile, carryEnvFile} from './bundle';
 import type {GithubRelease} from '@/lib/version/github';
 
 function release(assets: GithubRelease['assets']): GithubRelease {
@@ -73,6 +73,54 @@ describe('sha256', () => {
     } finally {
       await rm(f, {force: true});
     }
+  });
+});
+
+describe('carryEnvFile', () => {
+  // Д-14: a release is a fresh directory, so the config has to travel with it.
+  // Getting this wrong is invisible until the symlink swap, when the panel that
+  // would offer "roll back" is the process that just failed to start.
+  let dirs: string[] = [];
+
+  async function tempDir(tag: string): Promise<string> {
+    const d = join(tmpdir(), `carry-env-${process.pid}-${tag}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(d, {recursive: true});
+    dirs.push(d);
+    return d;
+  }
+
+  afterEach(async () => {
+    await Promise.all(dirs.map((d) => rm(d, {recursive: true, force: true})));
+    dirs = [];
+  });
+
+  it('copies .env from the running release into the new one', async () => {
+    const from = await tempDir('from');
+    const to = await tempDir('to');
+    await writeFile(join(from, '.env'), 'DATABASE_URL="postgresql://u:p@localhost:5432/db"\n');
+
+    expect(await carryEnvFile(from, to)).toBe('copied');
+    expect(await readFile(join(to, '.env'), 'utf8')).toContain('DATABASE_URL');
+  });
+
+  it('reports "absent" when the running release has no .env, and copies nothing', async () => {
+    // Not a failure: Docker/systemd/aaPanel project variables configure the app
+    // through the process environment, which the new release inherits anyway.
+    const from = await tempDir('from');
+    const to = await tempDir('to');
+
+    expect(await carryEnvFile(from, to)).toBe('absent');
+    await expect(readFile(join(to, '.env'), 'utf8')).rejects.toThrow();
+  });
+
+  it('never overwrites a .env already present in the new release', async () => {
+    const from = await tempDir('from');
+    const to = await tempDir('to');
+    await writeFile(join(from, '.env'), 'FROM_RUNNING=1\n');
+    await writeFile(join(to, '.env'), 'ALREADY_THERE=1\n');
+
+    expect(await carryEnvFile(from, to)).toBe('kept');
+    expect(await readFile(join(to, '.env'), 'utf8')).toBe('ALREADY_THERE=1\n');
   });
 });
 

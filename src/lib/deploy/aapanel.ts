@@ -16,7 +16,7 @@ import type {
 } from './adapter';
 import {releaseLayout, sanitizeVersion, bundleAssetName} from './layout';
 import {findBundleAssets, parseChecksumFile} from './bundle-assets';
-import {downloadToFile, verifyFileChecksum, extractTarGz} from './bundle';
+import {downloadToFile, verifyFileChecksum, extractTarGz, carryEnvFile} from './bundle';
 import {runDbBackup, isPgDumpAvailable, PgDumpNotAvailableError} from './db-backup';
 import {runMigrations} from './migrate';
 
@@ -24,8 +24,8 @@ const execFileAsync = promisify(execFile);
 
 /**
  * Self-update adapter for the "aaPanel Node project" deployment mode.
- * - stage(): download → verify → unpack → DB backup → migrate, while the OLD
- *   code keeps running (everything reversible until activation).
+ * - stage(): download → verify → unpack → carry config → DB backup → migrate,
+ *   while the OLD code keeps running (everything reversible until activation).
  * - activate()/rollback(): atomically repoint the `current` symlink and restart
  *   the panel's own Node project via the aaPanel API.
  */
@@ -103,7 +103,22 @@ export class AaPanelDeployAdapter implements DeployAdapter {
       await rename(stagingDir, layout.releaseDir);
       record('extract', true, layout.releaseDir);
 
-      // 4) Back up the DB before any migration (rollback safety net).
+      // 4) Carry the running release's configuration into the new one. A release
+      // is a fresh directory and `.env` lives inside it, so without this the new
+      // version boots with no DATABASE_URL and dies right after the symlink swap —
+      // when the rollback button is gone with the panel that served it.
+      const carried = await carryEnvFile(process.cwd(), layout.releaseDir);
+      record(
+        'carry-config',
+        true,
+        carried === 'copied'
+          ? '.env copied from the running release'
+          : carried === 'kept'
+            ? '.env already present in the new release'
+            : 'no .env in the running release — configuration comes from the process environment',
+      );
+
+      // 5) Back up the DB before any migration (rollback safety net).
       try {
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
         const out = path.posix.join(layout.backupsDir, `pre-${version}-${stamp}.sql`);
@@ -122,11 +137,11 @@ export class AaPanelDeployAdapter implements DeployAdapter {
         }
       }
 
-      // 5) Apply migrations (expand/contract — safe with the old code running).
+      // 6) Apply migrations (expand/contract — safe with the old code running).
       const migrateOut = await runMigrations(layout.releaseDir, input.databaseUrl);
       record('migrate', true, migrateOut.split('\n').slice(-1)[0] || undefined);
 
-      // 6) Mark the release as staged (ready for activation in Phase 2b).
+      // 7) Mark the release as staged (ready for activation in Phase 2b).
       await setStagedVersion(version);
       record('record-staged', true, version);
 

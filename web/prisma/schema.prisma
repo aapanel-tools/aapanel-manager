@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  admin
+  viewer
+}
+
+/// How a panel's TLS certificate is trusted. There is deliberately no "skip
+/// verification" value: the connection carries api_sk. See ADR-0002.
+enum TlsMode {
+  /// Trust exactly one certificate, identified by its SHA-256 fingerprint.
+  PINNED
+  /// Ordinary PKI verification — for a panel behind a real certificate.
+  VERIFY
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  role         Role       @default(viewer)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  auditLogs    AuditLog[]
+  jobs         Job[]
+}
+
+model Server {
+  id           String        @id @default(cuid())
+  name         String
+  tag          String?
+  baseUrl      String
+  apiSkEnc     String
+  tlsMode      TlsMode       @default(PINNED)
+  /// SHA-256 of the panel's leaf certificate, uppercase hex without separators.
+  /// Null means "not pinned yet" — recorded on the first connection (ADR-0002).
+  tlsPinSha256 String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  status       ServerStatus?
+  auditLogs    AuditLog[]
+  jobItems     JobItem[]
+}
+
+model ServerStatus {
+  serverId      String   @id
+  server        Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  online        Boolean  @default(false)
+  cpu           Float?
+  mem           Float?
+  disk          Float?
+  projectCount  Int?
+  error         String?
+  lastCheckedAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  serverId  String?
+  server    Server?  @relation(fields: [serverId], references: [id], onDelete: SetNull)
+  action    String
+  target    String?
+  result    String
+  createdAt DateTime @default(now())
+
+  @@index([serverId])
+  @@index([userId])
+  /// The journal only grows and is always read newest-first with paging;
+  /// without this index that scan degrades as the table fills up.
+  @@index([createdAt])
+}
+
+/// A bulk operation over several servers (ADR-0005). Lives in the database because
+/// it outlasts the request that created it: the browser tab may close, the process
+/// may restart, and the answer to "where did it get to" must survive both.
+enum JobStatus {
+  pending
+  running
+  succeeded
+  failed
+  cancelled
+}
+
+/// Per-server outcome. `skipped` is neither success nor failure — the run stopped
+/// before reaching this server, and saying so plainly is the point.
+enum JobItemStatus {
+  pending
+  running
+  succeeded
+  failed
+  skipped
+}
+
+model Job {
+  id     String    @id @default(cuid())
+  /// Operation kind, e.g. "project.control". Its params schema is picked by this.
+  kind   String
+  /// Operation parameters. Validated against the kind's schema on every read:
+  /// time passes between writing and running, and stored data is external data.
+  params Json
+  status JobStatus @default(pending)
+  /// Stop the whole run at the first failed server. Default per PROJECT_RULES §16.
+  stopOnError Boolean @default(true)
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  /// Set when an operator asks to stop. The runner checks it before each server;
+  /// a server already in flight is never abandoned half-done.
+  cancelRequestedAt DateTime?
+
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  items JobItem[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model JobItem {
+  id       String @id @default(cuid())
+  jobId    String
+  job      Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  serverId String?
+  server   Server? @relation(fields: [serverId], references: [id], onDelete: SetNull)
+  /// Copied at creation: the report of what was done to a production machine must
+  /// survive that machine being removed from the app.
+  serverName String
+
+  /// Order of execution. Position 0 is the canary — it runs alone first.
+  position Int
+  status   JobItemStatus @default(pending)
+  /// Outcome in one line: the panel's words on failure, a short note on success.
+  message  String?
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  @@index([jobId])
+  @@index([serverId])
+}
+
+/// Single-row settings for the self-update feature (id is fixed to "singleton").
+model UpdateSettings {
+  id              String   @id @default("singleton")
+  deploymentMode  String   @default("manual") // docker | systemd | aapanel | manual
+  githubOwner     String   @default("")
+  githubRepo      String   @default("")
+  githubTokenEnc  String? // encrypted PAT for a private repo
+  // aapanel mode — self-restart: the panel calls its OWN aaPanel API to restart
+  // its own Node project. Configured once; not tied to the managed-servers list.
+  selfBaseUrl     String? // base URL of the panel's own aaPanel (e.g. https://127.0.0.1:PORT)
+  selfApiKeyEnc   String? // encrypted api_sk for that aaPanel (same scheme as Server.apiSkEnc)
+  selfTlsMode      TlsMode @default(PINNED) // how that panel's certificate is trusted
+  selfTlsPinSha256 String? // its pinned SHA-256 fingerprint; null = pin on first use
+  selfProject     String? // the panel's own Node project name in aaPanel
+  // Deprecated (superseded by self* above) — kept nullable, dropped in a later contract migration.
+  aapanelServerId String? // soft reference to a Server id (validated on use)
+  aapanelProject  String? // the panel's Node project name in aaPanel
+  startScript     String? // project_script from package.json
+  // docker / systemd mode:
+  serviceName     String? // compose service or pm2/systemd unit name
+  // self-update staging (Phase 2): a downloaded+migrated release awaiting activation.
+  stagedVersion   String?
+  stagedAt        DateTime?
+  // version the `current` symlink pointed to before the last activation (rollback target).
+  previousVersion String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+/// History of installed versions — shown in the UI and used for future rollback.
+model VersionHistory {
+  id          String   @id @default(cuid())
+  version     String
+  installedAt DateTime @default(now())
+  note        String?
+
+  @@index([installedAt])
+}

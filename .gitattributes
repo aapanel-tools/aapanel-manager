@@ -1,0 +1,4 @@
+# Normalize line endings: store as LF in the repo and check out as LF on all
+# platforms (dev on Windows, prod on Ubuntu). Stops CRLF/LF churn and keeps
+# shell scripts / configs valid in production.
+* text=auto eol=lf

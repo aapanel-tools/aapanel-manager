@@ -1,0 +1,43 @@
+# Compose: Postgres + app (single image).
+#
+# Usage:
+#   cp .env.example .env   # fill in DATABASE_URL, AUTH_SECRET, APP_ENCRYPTION_KEY …
+#   docker compose up --build
+#
+# The `app` image applies DB migrations on start (its entrypoint runs
+# `prisma migrate deploy`, then `next start`) — no separate migrate/worker
+# service. The app also polls aaPanel servers in-process (src/instrumentation.ts);
+# a Postgres advisory lock makes it safe to scale `app` to several replicas —
+# exactly one of them polls, and concurrent migrate-on-start runs serialize.
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: aapanel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpass}
+      POSTGRES_DB: aapanel_manager
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aapanel -d aapanel_manager"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      target: runner
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    ports: ["3000:3000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

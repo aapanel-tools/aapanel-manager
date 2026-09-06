@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Gate: typecheck · lint · vitest (needs Postgres) · production build.
+# Runs on Ubuntu to match production. Playwright e2e is intentionally out of CI
+# (needs a running server + seeded DB + browsers); run it locally via pnpm test:e2e.
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aapanel_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aapanel_test?schema=public
+      # CI-only dummy values (NOT real secrets) — just satisfy env validation + crypto tests.
+      AUTH_SECRET: ci-only-not-a-real-secret-0123456789abcd
+      APP_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up pnpm (corepack, pinned)
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.5.0 --activate
+          echo "node=$(node --version) pnpm=$(pnpm --version)"
+
+      - name: Install dependencies (frozen)
+        run: |
+          set +e
+          OUT=$(pnpm install --frozen-lockfile 2>&1)
+          CODE=$?
+          echo "$OUT"
+          if [ "$CODE" -ne 0 ]; then
+            CLEAN=$(printf '%s' "$OUT" | tr '\n' ' ' | tail -c 900)
+            echo "::error title=frozen-install (pnpm $(pnpm --version))::$CLEAN"
+          fi
+          exit "$CODE"
+      - run: pnpm prisma generate
+      - run: pnpm prisma migrate deploy
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+  # Builds the self-update release bundle and proves it works end-to-end:
+  # migrate deploy from the unpacked bundle, boot `next start`, hit /api/health.
+  # This is the only place the bundle's migrate-capability is verified (it can't
+  # be tested on a Windows dev box), so a broken bundle fails CI here.
+  release-bundle:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aapanel_bundle
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5433/aapanel_bundle?schema=public
+      AUTH_SECRET: ci-only-not-a-real-secret-0123456789abcd
+      APP_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Set up pnpm (corepack, pinned)
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.5.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm prisma generate
+      - run: pnpm build
+      - name: Assemble release bundle
+        run: node scripts/build-release-bundle.mjs
+      - name: Smoke-test the bundle (migrate + boot + /api/health)
+        run: node scripts/smoke-release-bundle.mjs "$(ls release-dist/aapanel-manager-bundle-*.tar.gz)"
+
+  # Builds the single production Docker image and proves it works end-to-end:
+  # the entrypoint runs `prisma migrate deploy` on start, then `next start`; we
+  # hit /api/health. Verifies migrate-on-start + the consolidated image (the part
+  # that can't be checked on a Windows dev box).
+  docker-image:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aapanel_docker
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the production image
+        run: docker build --target runner --build-arg APP_VERSION=ci -t aapanel-manager:ci web
+
+      - name: Run it (migrate-on-start + serve, host network → Postgres service)
+        run: |
+          docker run -d --name app --network host \
+            -e DATABASE_URL='postgresql://postgres:postgres@localhost:5432/aapanel_docker?schema=public' \
+            -e AUTH_SECRET='ci-only-not-a-real-secret-0123456789abcd' \
+            -e APP_ENCRYPTION_KEY='0000000000000000000000000000000000000000000000000000000000000000' \
+            -e APP_VERSION='ci' \
+            -e ENABLE_POLLER='false' \
+            aapanel-manager:ci
+
+      - name: Wait for /api/health to report the image version
+        run: |
+          for i in $(seq 1 60); do
+            sleep 3
+            body=$(curl -fsS http://localhost:3000/api/health 2>/dev/null || true)
+            echo "poll $i: $body"
+            if printf '%s' "$body" | grep -q '"version":"ci"'; then echo "image healthy"; exit 0; fi
+          done
+          echo "::error::/api/health never reported version=ci"; docker logs app; exit 1
+
+      - name: Container logs
+        if: always()
+        run: docker logs app || true

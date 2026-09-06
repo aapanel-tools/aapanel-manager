@@ -1,0 +1,96 @@
+name: Release
+
+# Cut a release by pushing a semver tag, e.g. `git tag v0.1.0 && git push origin v0.1.0`.
+# Produces: a single Docker image in GHCR (migrates on start, then serves), a
+# self-update bundle (aapanel-manager-bundle-<v>.tar.gz + .sha256) attached to
+# the GitHub Release, and the Release entry itself (read by the in-app updater).
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+      packages: write # push images to GHCR
+    defaults:
+      run:
+        working-directory: web
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aapanel_bundle
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aapanel_bundle?schema=public
+      AUTH_SECRET: ci-only-not-a-real-secret-0123456789abcd
+      APP_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version (strip leading v)
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # ── Self-update bundle: build, assemble, and prove it works before upload ──
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Set up pnpm (corepack, pinned)
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.5.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm prisma generate
+      - run: pnpm build
+      - name: Assemble release bundle
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.version }}
+        run: node scripts/build-release-bundle.mjs
+      - name: Smoke-test the bundle (migrate + boot + /api/health)
+        run: node scripts/smoke-release-bundle.mjs "$(ls release-dist/aapanel-manager-bundle-*.tar.gz)"
+
+      # ── Docker image (single: migrates on start, then serves) ──────────────────
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push app image
+        uses: docker/build-push-action@v6
+        with:
+          context: web
+          target: runner
+          push: true
+          build-args: |
+            APP_VERSION=${{ steps.ver.outputs.version }}
+            APP_COMMIT=${{ github.sha }}
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+
+      # ── GitHub Release (with the verified self-update bundle attached) ─────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            web/release-dist/aapanel-manager-bundle-*.tar.gz
+            web/release-dist/aapanel-manager-bundle-*.tar.gz.sha256

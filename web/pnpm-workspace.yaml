@@ -1,0 +1,15 @@
+# pnpm 11.x reads `allowBuilds` here (NOT `onlyBuiltDependencies`) to decide
+# which dependencies may run install/build scripts. Every dependency with a
+# build script must be listed, or a clean install fails with
+# ERR_PNPM_IGNORED_BUILDS (verified on CI + a clean local install).
+allowBuilds:
+  '@node-rs/argon2': true
+  '@parcel/watcher': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@swc/core': true
+  esbuild: true
+  msw: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true

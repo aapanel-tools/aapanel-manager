@@ -1,0 +1,46 @@
+# Секреты и окружение — НИКОГДА не коммитить
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets.json
+# .mcp.json содержит API-ключи MCP-серверов (context7, @21st-dev/magic)
+.mcp.json
+
+# Зависимости
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+!web/pnpm-lock.yaml
+
+# Сборка / временное
+dist/
+build/
+.next/
+out/
+*.log
+*.tmp
+
+# Самообновление (git-режим): per-instance runtime-артефакты — не коммитить
+.update.lock
+.update.status
+.update-backups/
+
+# Артефакты MCP-браузера (скриншоты, снапшоты)
+.playwright-mcp/
+
+# Визуальный брейншторм (макеты, состояние)
+.superpowers/
+
+# IDE / ОС
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Личные рабочие заметки (не для репозитория)
+start.md
+HANDOFF.md
+

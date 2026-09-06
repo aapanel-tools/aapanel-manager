@@ -18,7 +18,10 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "prod:deploy": "git pull && pnpm install && pnpm run db:generate && pnpm run db:deploy && pnpm run build",
+    "prod:release": "prisma generate && prisma migrate deploy && next build",
+    "prod:start": "node scripts/run-next.mjs start",
+    "prod:admin": "prisma db seed",
+    "prod:deploy": "git pull && npm install && npm run prod:release",
     "release": "node scripts/release-version.mjs",
     "worker": "tsx --env-file-if-exists=.env --tsconfig tsconfig.worker.json src/worker/index.ts"
   },

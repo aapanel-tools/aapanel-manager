@@ -14,9 +14,6 @@ jobs:
     permissions:
       contents: write # create the GitHub Release
       packages: write # push images to GHCR
-    defaults:
-      run:
-        working-directory: web
 
     services:
       postgres:
@@ -76,7 +73,7 @@ jobs:
       - name: Build & push app image
         uses: docker/build-push-action@v6
         with:
-          context: web
+          context: .
           target: runner
           push: true
           build-args: |
@@ -92,5 +89,5 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            web/release-dist/aapanel-manager-bundle-*.tar.gz
-            web/release-dist/aapanel-manager-bundle-*.tar.gz.sha256
+            release-dist/aapanel-manager-bundle-*.tar.gz
+            release-dist/aapanel-manager-bundle-*.tar.gz.sha256

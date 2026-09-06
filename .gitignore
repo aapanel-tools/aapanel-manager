@@ -1,46 +1,65 @@
-# Секреты и окружение — НИКОГДА не коммитить
+# ── Секреты и окружение — НИКОГДА не коммитить ────────────────────────────────
 .env
 .env.local
-.env.*.local
+.env*.local
 *.key
 *.pem
 secrets.json
-# .mcp.json содержит API-ключи MCP-серверов (context7, @21st-dev/magic)
+# .mcp.json содержит API-ключи MCP-серверов
 .mcp.json
 
-# Зависимости
-node_modules/
+# ── Зависимости ──────────────────────────────────────────────────────────────
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 package-lock.json
 yarn.lock
-pnpm-lock.yaml
-!web/pnpm-lock.yaml
 
-# Сборка / временное
+# ── Сборка и вывод ───────────────────────────────────────────────────────────
+/.next/
+/out/
+/build
 dist/
-build/
-.next/
-out/
-*.log
-*.tmp
+# бандл самообновления (scripts/build-release-bundle.mjs)
+/release-dist/
+*.tsbuildinfo
+next-env.d.ts
+.vercel
 
-# Самообновление (git-режим): per-instance runtime-артефакты — не коммитить
+# ── Тесты ────────────────────────────────────────────────────────────────────
+/coverage
+/test-results/
+/playwright-report/
+
+# ── Самообновление (git-режим): runtime-артефакты конкретной установки ────────
 .update.lock
+.update.log
 .update.status
 .update-backups/
 
-# Артефакты MCP-браузера (скриншоты, снапшоты)
-.playwright-mcp/
+# ── Логи и временное ─────────────────────────────────────────────────────────
+*.log
+*.tmp
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# Визуальный брейншторм (макеты, состояние)
+# ── Артефакты инструментов ───────────────────────────────────────────────────
+.playwright-mcp/
 .superpowers/
 
-# IDE / ОС
+# ── IDE и ОС ─────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-# Личные рабочие заметки (не для репозитория)
+# ── Личные рабочие заметки ───────────────────────────────────────────────────
 start.md
 HANDOFF.md
-

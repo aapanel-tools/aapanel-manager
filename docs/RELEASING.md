@@ -18,7 +18,7 @@ Job **`docker-image`** делает то же для Docker: собирает п
 Релиз создаётся пушем semver-тега:
 
 ```bash
-# 1) поднять версию в web/package.json (например, 0.1.0 → 0.2.0), закоммитить
+# 1) поднять версию в package.json (например, 0.1.0 → 0.2.0), закоммитить
 # 2) поставить тег и запушить его
 git tag v0.2.0
 git push origin v0.2.0
@@ -66,7 +66,7 @@ services:
 Обновление: `docker compose pull && docker compose up -d` (новый контейнер при старте сам применит миграции).
 
 ## Версионирование
-- `web/package.json` `version` — источник версии по умолчанию (fallback для `getCurrentVersion()`).
+- `package.json` `version` — источник версии по умолчанию (fallback для `getCurrentVersion()`).
 - Тег релиза `vX.Y.Z` должен соответствовать этой версии; `APP_VERSION` из тега перекрывает её в образе.
 
 ## Самообновление (Версии Фаза 2)
@@ -74,7 +74,7 @@ services:
 
 Сделано (Фаза 2 полностью, режим aaPanel — бандл):
 - **Бандл релиза** `aapanel-manager-bundle-<v>.tar.gz` + `.sha256` как ассет, с самопроверкой в CI.
-- **Серверная «начинка»**: скачивание, **проверка sha256**, атомарная распаковка, бэкап БД, миграции, **активация** (своп симлинка `current` + рестарт своего Node-проекта через aaPanel API) и **откат** — `web/src/lib/deploy/`; действия `stageUpdateAction`/`activateUpdateAction`/`rollbackUpdateAction`; `/api/health`.
+- **Серверная «начинка»**: скачивание, **проверка sha256**, атомарная распаковка, бэкап БД, миграции, **активация** (своп симлинка `current` + рестарт своего Node-проекта через aaPanel API) и **откат** — `src/lib/deploy/`; действия `stageUpdateAction`/`activateUpdateAction`/`rollbackUpdateAction`; `/api/health`.
 - **UI** в «Настройки → Обновления» (раздел с боковым меню): репозиторий **зашит** (`aapanel-tools/aapanel-manager`) — автопроверка из коробки, `owner/repo` только для форка. Кнопки «Подготовить {v}» → «Применить» → «Откатить на предыдущую» **всегда видны** (неактивны с подсказкой, пока нет `APP_RELEASE_ROOT` + настройки «Самоперезапуск этой панели»); подтверждение + поллинг `/api/health` после рестарта; i18n ru/en.
 
 ### Одноразовая настройка (режим aaPanel)
@@ -97,11 +97,11 @@ ln -sfn "$ROOT/releases/0.1.0" "$ROOT/current"     # активная верси
 **Ограничение v1:** если новая версия совсем не стартует, кнопку отката в панели не нажать → откат вручную: `ln -sfn "$ROOT/releases/<пред>" "$ROOT/current"` + рестарт проекта в aaPanel.
 
 ### Вариант: git-режим (проще — без бандла, сборка на сервере)
-Способ установки **«Node-проект в aaPanel (git)»** — для установки через `git clone` (приложение в `web/`). Кнопки «Обновить»/«Откатить» запускают на сервере **фоновый процесс** (`scripts/git-self-update.ts`, переживает рестарт): бэкап БД → `git fetch` → `git checkout v<версия>` → `npm install` → `prisma generate` → `prisma migrate deploy` → `npm run build` → рестарт своего Node-проекта через aaPanel API. Пакетный менеджер по умолчанию **`npm`** (на aaPanel идёт вместе с node; pnpm/corepack обычно нет). Прогресс показывается **по шагам** (скачивание → установка → миграции → сборка → перезапуск) — UI читает `<repoRoot>/.update.status`; полный лог — `<repoRoot>/.update.log`; single-flight lock — `<repoRoot>/.update.lock` (повторный клик → «обновление уже выполняется»).
+Способ установки **«Node-проект в aaPanel (git)»** — для установки через `git clone` (приложение лежит в корне репозитория). Кнопки «Обновить»/«Откатить» запускают на сервере **фоновый процесс** (`scripts/git-self-update.ts`, переживает рестарт): бэкап БД → `git fetch` → `git checkout v<версия>` → `npm install` → `prisma generate` → `prisma migrate deploy` → `npm run build` → рестарт своего Node-проекта через aaPanel API. Пакетный менеджер по умолчанию **`npm`** (на aaPanel идёт вместе с node; pnpm/corepack обычно нет). Прогресс показывается **по шагам** (скачивание → установка → миграции → сборка → перезапуск) — UI читает `<repoRoot>/.update.status`; полный лог — `<repoRoot>/.update.log`; single-flight lock — `<repoRoot>/.update.lock` (повторный клик → «обновление уже выполняется»).
 
 Настройка:
-1. `git clone` репозитория на сервер (оставаться на ветке `main`); создать `web/.env` (`DATABASE_URL`/`AUTH_SECRET`/`APP_ENCRYPTION_KEY`/`PORT`; **без** `APP_VERSION` и `APP_RELEASE_ROOT`). aaPanel прячет node в `/www/server/nodejs/<v>/bin` — добавь его в PATH: `export PATH="$(ls -d /www/server/nodejs/*/bin | sort -V | tail -1):$PATH"`. Затем из `web/`: `npm install && npm run db:generate && npm run db:deploy && npm run db:seed && npm run build` (зависимости можно поставить и кнопкой «Установить модули» в aaPanel).
-2. Node-проект в aaPanel: cwd = `.../<repo>/web`, запуск `node scripts/run-next.mjs start`, порт = `PORT` из `web/.env`, пользователь `www`.
+1. `git clone` репозитория на сервер (оставаться на ветке `main`); создать `.env` в корне репозитория (`DATABASE_URL`/`AUTH_SECRET`/`APP_ENCRYPTION_KEY`/`PORT`; **без** `APP_VERSION` и `APP_RELEASE_ROOT`). aaPanel прячет node в `/www/server/nodejs/<v>/bin` — добавь его в PATH: `export PATH="$(ls -d /www/server/nodejs/*/bin | sort -V | tail -1):$PATH"`. Затем из корня репозитория: `npm install && npm run db:generate && npm run db:deploy && npm run db:seed && npm run build` (зависимости можно поставить и кнопкой «Установить модули» в aaPanel).
+2. Node-проект в aaPanel: cwd = каталог клона, запуск `node scripts/run-next.mjs start`, порт = `PORT` из `.env`, пользователь `www`.
 3. **Настройки → Обновления**: способ = **Node-проект в aaPanel (git)**; заполнить «Самоперезапуск этой панели» (адрес/ключ/проект своей aaPanel).
 4. Пакетный менеджер фонового процесса: по умолчанию **`npm`** (на aaPanel идёт вместе с node). Для pnpm/yarn — `APP_PKG_MANAGER=pnpm` (+ `corepack enable`) или `APP_PKG_BIN=/полный/путь`. Раннер сам добавляет каталог node в PATH, поэтому «npm not found» в фоне не возникает.
 

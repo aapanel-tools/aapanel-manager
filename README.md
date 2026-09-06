@@ -59,14 +59,15 @@ Next.js 16 (App Router · React Server Components · Server Actions) · React 19
 
 ```bash
 git clone https://github.com/aapanel-tools/aapanel-manager.git
-cd aapanel-manager/web
+cd aapanel-manager
 pnpm install
 cp .env.example .env          # set DATABASE_URL, AUTH_SECRET, APP_ENCRYPTION_KEY
 pnpm prisma migrate deploy
 pnpm dev                      # http://localhost:3000
 ```
 
-For production (Docker images, releasing by tag, self-update) see [docs/RELEASING.md](docs/RELEASING.md).
+Ways to run it (pm2, systemd, Docker Compose) — [docs/RUNNING.md](docs/RUNNING.md).
+Releasing by tag and self-update — [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Roadmap
 

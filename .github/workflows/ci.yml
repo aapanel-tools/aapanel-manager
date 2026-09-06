@@ -11,9 +11,6 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
 
     services:
       postgres:
@@ -74,9 +71,6 @@ jobs:
   # be tested on a Windows dev box), so a broken bundle fails CI here.
   release-bundle:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
 
     services:
       postgres:
@@ -142,7 +136,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the production image
-        run: docker build --target runner --build-arg APP_VERSION=ci -t aapanel-manager:ci web
+        run: docker build --target runner --build-arg APP_VERSION=ci -t aapanel-manager:ci .
 
       - name: Run it (migrate-on-start + serve, host network → Postgres service)
         run: |

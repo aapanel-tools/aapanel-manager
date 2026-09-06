@@ -12,7 +12,7 @@
 // Prerequisites (the caller runs these first): pnpm install, prisma generate,
 // next build. Linux/CI only (uses system `tar`).
 //
-// Usage: node scripts/build-release-bundle.mjs [outDir]   (run from web/)
+// Usage: node scripts/build-release-bundle.mjs [outDir]   (run from the repo root)
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {mkdirSync, readFileSync, writeFileSync, existsSync} from 'node:fs';

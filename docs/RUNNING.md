@@ -1,4 +1,4 @@
-# aaPanel Manager — web app
+# aaPanel Manager — running the app
 
 Next.js 16 App Router front-end + back-end proxy for managing aaPanel servers.
 Auth, server CRUD, the operations journal, bulk operations over many servers, and
@@ -67,7 +67,7 @@ pnpm build                   # Next.js standalone output → .next/standalone/
 
 Install pm2 once: `npm install -g pm2`
 
-Create `ecosystem.config.cjs` in `web/`:
+Create `ecosystem.config.cjs` in the repository root:
 
 ```js
 // ecosystem.config.cjs
@@ -105,8 +105,8 @@ After=network.target postgresql.service
 [Service]
 Type=simple
 User=nodeapp
-WorkingDirectory=/srv/aapanel/web/.next/standalone
-EnvironmentFile=/srv/aapanel/web/.env
+WorkingDirectory=/srv/aapanel/.next/standalone
+EnvironmentFile=/srv/aapanel/.env
 Environment=NODE_ENV=production
 Environment=PORT=3000
 ExecStart=/usr/bin/node server.js

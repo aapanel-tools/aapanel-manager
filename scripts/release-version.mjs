@@ -1,9 +1,9 @@
-// One-command release: bump web/package.json, commit, tag, push.
+// One-command release: bump package.json, commit, tag, push.
 //
 // Pushing the tag `vX.Y.Z` triggers .github/workflows/release.yml, which builds
 // the Docker image + the self-update bundle and publishes the GitHub Release.
 //
-// Usage (from web/):
+// Usage (from the repo root):
 //   pnpm release 0.4.0
 //   pnpm release 0.4.0 "Short release notes for the tag annotation"
 //

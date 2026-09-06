@@ -5,6 +5,10 @@
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@11.5.0",
   "scripts": {
+    "prod:release": "prisma generate && prisma migrate deploy && next build",
+    "prod:start": "node scripts/run-next.mjs start",
+    "prod:admin": "prisma db seed",
+    "prod:deploy": "git pull && npm install && npm run prod:release",
     "dev": "node scripts/run-next.mjs dev",
     "build": "next build",
     "start": "node scripts/run-next.mjs start",
@@ -18,10 +22,6 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "prod:release": "prisma generate && prisma migrate deploy && next build",
-    "prod:start": "node scripts/run-next.mjs start",
-    "prod:admin": "prisma db seed",
-    "prod:deploy": "git pull && npm install && npm run prod:release",
     "release": "node scripts/release-version.mjs",
     "worker": "tsx --env-file-if-exists=.env --tsconfig tsconfig.worker.json src/worker/index.ts"
   },

@@ -25,9 +25,13 @@ export function SectionNav({id}: SectionNavProps) {
   const overviewHref = `/servers/${id}` as Route;
   const projectsHref = `/servers/${id}/projects` as Route;
   const databasesHref = `/servers/${id}/databases` as Route;
+  const sitesHref = `/servers/${id}/sites` as Route;
 
   const links = [
     {href: overviewHref, label: t('overview'), exact: true},
+    // Sites first among the sections: on a hosting panel it is what people open
+    // for, far more often than projects and databases together.
+    {href: sitesHref, label: t('sites'), exact: false},
     {href: projectsHref, label: t('projects'), exact: false},
     {href: databasesHref, label: t('databases'), exact: false},
   ] satisfies Array<{href: Route; label: string; exact: boolean}>;

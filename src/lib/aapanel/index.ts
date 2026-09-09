@@ -86,6 +86,7 @@ export type {
   ProjectModifyInput,
   ProjectCreateInput,
   Database,
+  Site,
   DbEngine,
   DbCreateInput,
   PartialResult,

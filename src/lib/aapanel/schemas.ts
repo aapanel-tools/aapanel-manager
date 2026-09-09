@@ -49,6 +49,42 @@ export const batchOperationResponse = envelope(
 
 export const projectLogResponse = envelope(z.object({result: z.string()}));
 
+/**
+ * Site list row.
+ *
+ * Types follow the panel, not what would be tidy: `status` is the string "1",
+ * `ssl` is the number -1 when no certificate is set, and `php_version` is
+ * absent on a site that has no PHP. Every field the client reads has a default
+ * so that one older panel omitting a column produces a slightly emptier row
+ * rather than an unparseable list.
+ *
+ * `ico` (a base64 favicon) is deliberately not read: it is large, we never show
+ * it, and unknown keys are stripped rather than rejected.
+ */
+export const siteListResponse = envelope(
+  z.object({
+    data: z
+      .array(
+        z.object({
+          id: z.number(),
+          name: z.string(),
+          rname: z.string().default(''),
+          path: z.string().default(''),
+          status: z.string().default(''),
+          ps: z.string().default(''),
+          addtime: z.string().default(''),
+          php_version: z.string().default(''),
+          project_type: z.string().default(''),
+          ssl: z.union([z.number(), z.string()]).optional(),
+          site_ssl: z.union([z.number(), z.string()]).optional(),
+          domain: z.number().default(0),
+          backup_count: z.number().default(0),
+        }),
+      )
+      .default([]),
+  }),
+);
+
 /** MySQL list row — `accept` carries the access scope. */
 export const mysqlDatabaseListResponse = envelope(
   z.object({

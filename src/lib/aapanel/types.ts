@@ -211,6 +211,34 @@ export interface Database {
   backupCount: number;
 }
 
+/**
+ * One site as the app talks about it.
+ *
+ * The panel's raw shapes are normalised here rather than in the view: `status`
+ * arrives as the string "1", and SSL as -1 meaning "none", which are facts about
+ * the panel's storage, not about the site. Leaving them raw would spread that
+ * trivia through every component that renders a site.
+ *
+ * `type` stays a plain string on purpose. The panel lists PHP and WP today and
+ * nothing stops a version from adding another; a closed union would turn an
+ * unknown-but-harmless type into a parse failure for the whole list.
+ */
+export interface Site {
+  id: number;
+  /** Primary domain — what the operator calls the site. */
+  name: string;
+  path: string;
+  running: boolean;
+  phpVersion: string;
+  type: string;
+  sslEnabled: boolean;
+  /** How many domains point at this site, the panel's own count. */
+  domainCount: number;
+  note: string;
+  addtime: string;
+  backupCount: number;
+}
+
 export interface DbCreateInput {
   engine: DbEngine;
   name: string;

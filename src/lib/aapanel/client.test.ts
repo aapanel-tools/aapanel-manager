@@ -1243,3 +1243,129 @@ describe('AaPanelClient panel load limit', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// AaPanelClient.listSites
+// ---------------------------------------------------------------------------
+
+/** A row exactly as a live panel returns it (see the sites docs), minus the base64 `ico`. */
+const FIXTURE_SITE_ROW = {
+  id: 3,
+  name: 'site.example.com',
+  path: '/www/wwwroot/site.example.com',
+  status: '1',
+  ps: 'site_example_com',
+  addtime: '2026-06-07 15:45:13',
+  php_version: '8.3',
+  project_type: 'PHP',
+  ssl: -1,
+  site_ssl: -1,
+  domain: 1,
+  quota: {used: 0, size: 0},
+  backup_count: 0,
+  rname: 'site.example.com',
+};
+
+describe('AaPanelClient.listSites', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('maps a real panel row into the shape the app talks in', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: [FIXTURE_SITE_ROW]}}) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listSites();
+
+    expect(failures).toEqual([]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: 3,
+      name: 'site.example.com',
+      path: '/www/wwwroot/site.example.com',
+      // The panel stores the flag as the string "1" — a boolean here means the
+      // view never has to know that.
+      running: true,
+      phpVersion: '8.3',
+      type: 'PHP',
+      sslEnabled: false, // -1 means no certificate
+      domainCount: 1,
+    });
+  });
+
+  it('asks the sites table, not some other one', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    await new AaPanelClient(cfg).listSites();
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v2/data?action=getData');
+    expect(String((fetchMock.mock.calls[0][1] as RequestInit).body)).toContain('table=sites');
+  });
+
+  it('reads SSL as "not -1" rather than as truthiness', async () => {
+    // Both traps in one case: -1 is truthy and would read as "has a certificate",
+    // while 0 is a legitimate certificate id that truthiness would discard.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {
+          data: [
+            {...FIXTURE_SITE_ROW, id: 1, ssl: -1, site_ssl: -1},
+            {...FIXTURE_SITE_ROW, id: 2, ssl: 0, site_ssl: -1},
+            {...FIXTURE_SITE_ROW, id: 3, ssl: 7, site_ssl: -1},
+            {...FIXTURE_SITE_ROW, id: 4, ssl: '-1', site_ssl: '-1'},
+          ],
+        },
+      }) as never,
+    );
+    const {items} = await new AaPanelClient(cfg).listSites();
+    expect(items.map((s) => s.sslEnabled)).toEqual([false, true, true, false]);
+  });
+
+  it('keeps a site type it has never seen instead of rejecting the list', async () => {
+    // A newer panel adding a type must not blank the page: the type is displayed,
+    // not branched on.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {data: [{...FIXTURE_SITE_ROW, project_type: 'SOMETHING_NEW'}]},
+      }) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listSites();
+    expect(failures).toEqual([]);
+    expect(items[0].type).toBe('SOMETHING_NEW');
+  });
+
+  it('reports a refusal as a failure instead of an empty list', async () => {
+    // The whole point of PartialResult: "no sites" and "the panel said no" must
+    // not look identical to the operator (ADR-0003).
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: 'The API key is not authorised'}) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listSites();
+    expect(items).toEqual([]);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].source).toBe('sites');
+    expect(failures[0].message).toContain('not authorised');
+  });
+
+  it('survives a row missing the optional columns an older panel omits', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {data: [{id: 9, name: 'bare.example.com'}]},
+      }) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listSites();
+    expect(failures).toEqual([]);
+    expect(items[0]).toMatchObject({
+      id: 9,
+      name: 'bare.example.com',
+      running: false,
+      phpVersion: '',
+      sslEnabled: false,
+      domainCount: 0,
+    });
+  });
+});

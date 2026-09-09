@@ -9,6 +9,7 @@ import {
   projectInfoResponse,
   projectListResponse,
   projectLogResponse,
+  siteListResponse,
   type RawNodeProjectParsed,
 } from './schemas';
 import {TlsPinMismatchError, dispatcherFor, formatFingerprint} from './tls';
@@ -33,6 +34,7 @@ import {
   type ProjectModifyInput,
   type ProjectCreateInput,
   type Database,
+  type Site,
   type DbEngine,
   type DbCreateInput,
   type PartialResult,
@@ -798,6 +800,62 @@ export class AaPanelClient {
   }
 
   /**
+   * List the sites on this panel.
+   *
+   * Source: the sites documentation — POST /v2/data?action=getData with table=sites.
+   *
+   * The panel decides the scope, not us: its own answer reports
+   * `project_type IN ('PHP', 'WP')`, so Node and Python projects are absent by
+   * design. They have their own sections here for the same reason — a Node
+   * project is managed with different calls entirely.
+   *
+   * Returns a PartialResult like the database list does, though there is one
+   * source today. Sites have subtypes, and the databases module already proved
+   * that a panel can serve two subtypes from two different endpoints; when the
+   * second one arrives, callers keep working instead of being rewritten
+   * (ADR-0003).
+   */
+  async listSites(params: {p?: number; limit?: number; search?: string} = {}): Promise<PartialResult<Site>> {
+    try {
+      const raw = await this.post(
+        'v2/data?action=getData',
+        {
+          table: 'sites',
+          p: String(params.p ?? 1),
+          limit: String(params.limit ?? 1000),
+          search: params.search ?? '',
+          order: '',
+          type: '-1',
+          re_order: '',
+        },
+        siteListResponse,
+      );
+      const msg = this.unwrapEnvelope<{data: typeof raw.message.data}>(raw);
+      const items: Site[] = (msg.data ?? []).map((r) => ({
+        id: r.id,
+        // `rname` is the panel's display name and matches `name` in every
+        // sample; fall back rather than assume either is always present.
+        name: r.rname || r.name,
+        path: r.path,
+        // The panel stores the flag as the string "1", not a boolean.
+        running: r.status === '1',
+        phpVersion: r.php_version,
+        type: r.project_type,
+        // -1 means "no certificate". Anything else is a certificate id, so the
+        // only reliable reading is "not -1", not "truthy": 0 is also a value.
+        sslEnabled: sslIsSet(r.ssl) || sslIsSet(r.site_ssl),
+        domainCount: r.domain,
+        note: r.ps,
+        addtime: r.addtime,
+        backupCount: r.backup_count,
+      }));
+      return {items, failures: []};
+    } catch (err) {
+      return {items: [], failures: [describeSourceFailure('sites', err)]};
+    }
+  }
+
+  /**
    * Create a MySQL or PostgreSQL database.
    *
    * Field sources: docs/en/databases.md
@@ -934,6 +992,19 @@ type RawNodeProject = RawNodeProjectParsed;
  * cpu: sum of cpu_percent across all load_info entries (null when load_info is empty).
  * mem: sum of memory_used bytes across all entries, converted to MB (null when empty).
  */
+/**
+ * Does this site have a certificate?
+ *
+ * The panel writes -1 for "none" and a certificate id otherwise, and sends it
+ * as a number on some versions and a string on others. Reading it as truthy
+ * would be wrong twice over: -1 is truthy, and 0 is a legitimate id.
+ */
+function sslIsSet(value: number | string | undefined): boolean {
+  if (value === undefined || value === null || value === '') return false;
+  const n = typeof value === 'string' ? Number(value) : value;
+  return Number.isFinite(n) && n !== -1;
+}
+
 function mapProject(p: RawNodeProject): NodeProject {
   const status = p.run === true ? 'running' : p.run === false ? 'stopped' : 'unknown';
   const port = p.project_config?.port ?? null;

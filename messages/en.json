@@ -102,7 +102,8 @@
     "cron": "Cron",
     "firewall": "Firewall",
     "soon": "Soon",
-    "notFound": "Server not found"
+    "notFound": "Server not found",
+    "sites": "Sites"
   },
   "overview": {
     "cpu": "CPU",
@@ -212,6 +213,25 @@
     "filterEngine": "Filter by engine",
     "partialTitle": "This list may be incomplete",
     "partialLine": "{source} did not answer: {reason}"
+  },
+  "sites": {
+    "title": "Sites",
+    "refresh": "Refresh",
+    "noSites": "This server has no sites.",
+    "loadFailed": "Could not load the site list",
+    "partialTitle": "The list is incomplete",
+    "partialLine": "{source}: {reason}",
+    "domain": "Domain",
+    "type": "Type",
+    "php": "PHP",
+    "ssl": "SSL",
+    "domains": "Domains",
+    "path": "Document root",
+    "status": "Status",
+    "running": "running",
+    "stopped": "stopped",
+    "sslOn": "certificate installed",
+    "sslOff": "no certificate"
   },
   "updates": {
     "title": "Versions & Updates",

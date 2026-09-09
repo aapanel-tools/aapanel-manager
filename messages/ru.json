@@ -102,7 +102,8 @@
     "cron": "Cron",
     "firewall": "Файрвол",
     "soon": "Скоро",
-    "notFound": "Сервер не найден"
+    "notFound": "Сервер не найден",
+    "sites": "Сайты"
   },
   "overview": {
     "cpu": "CPU",
@@ -212,6 +213,25 @@
     "filterEngine": "Фильтр по движку",
     "partialTitle": "Список может быть неполным",
     "partialLine": "{source} не ответил: {reason}"
+  },
+  "sites": {
+    "title": "Сайты",
+    "refresh": "Обновить",
+    "noSites": "На этом сервере нет сайтов.",
+    "loadFailed": "Не удалось получить список сайтов",
+    "partialTitle": "Список неполный",
+    "partialLine": "{source}: {reason}",
+    "domain": "Домен",
+    "type": "Тип",
+    "php": "PHP",
+    "ssl": "SSL",
+    "domains": "Доменов",
+    "path": "Каталог",
+    "status": "Состояние",
+    "running": "работает",
+    "stopped": "остановлен",
+    "sslOn": "сертификат установлен",
+    "sslOff": "без сертификата"
   },
   "updates": {
     "title": "Версии и обновления",

@@ -1,7 +1,8 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireUser, requireAdmin, AuthError} from '@/lib/auth/guards';
-import {createClientForServer, AaPanelError} from '@/lib/aapanel';
+import {createClientForServer, describeError} from '@/lib/aapanel';
+import {serverLabel} from '@/lib/servers/label';
 import type {Database, SourceFailure} from '@/lib/aapanel';
 import {recordAudit} from '@/lib/audit';
 import {prisma} from '@/lib/db/prisma';
@@ -31,12 +32,6 @@ async function loadServerCreds(id: string) {
   });
 }
 
-function describeError(err: unknown): string {
-  if (err instanceof AaPanelError) return `${err.kind}: ${err.message}`;
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
-}
-
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
@@ -58,7 +53,7 @@ export async function listDatabasesAction(serverId: string): Promise<DbListResul
     return {ok: true, databases: items, failures};
   } catch (err) {
     log.error({err, serverId}, 'listDatabasesAction failed');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -95,7 +90,7 @@ export async function createDatabaseAction(serverId: string, formData: FormData)
   } catch (err) {
     log.error({err, serverId, name}, 'createDatabaseAction failed');
     await recordAudit({userId, serverId, action: 'db.create', target: name, result: 'error'});
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -137,6 +132,6 @@ export async function deleteDatabaseAction(serverId: string, formData: FormData)
   } catch (err) {
     log.error({err, serverId, name, engine}, 'deleteDatabaseAction failed');
     await recordAudit({userId, serverId, action: 'db.delete', target: name, result: 'error'});
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: describeError(err, await serverLabel(serverId))};
   }
 }

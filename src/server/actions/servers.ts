@@ -6,11 +6,12 @@ import {encryptSecret} from '@/lib/crypto/secret-box';
 import {getEncryptionKey} from '@/lib/config/secrets';
 import {
   createClientForServer,
-  AaPanelError,
+  describeError,
   formatFingerprint,
   probeCertificate,
 } from '@/lib/aapanel';
 import {recordAudit} from '@/lib/audit';
+import {serverLabel} from '@/lib/servers/label';
 import {mapLimit} from '@/lib/utils/concurrency';
 import {prisma} from '@/lib/db/prisma';
 import {log} from '@/log';
@@ -47,12 +48,6 @@ export type CertificateInspectResult =
 
 function fieldErrorState(error: string, fieldErrors?: Record<string, string[]>): ActionState {
   return {ok: false, error, fieldErrors};
-}
-
-function describeError(err: unknown): string {
-  if (err instanceof AaPanelError) return `${err.kind}: ${err.message}`;
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
 }
 
 export async function createServerAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -134,7 +129,7 @@ export async function updateServerAction(_prev: ActionState, formData: FormData)
   } catch (err) {
     log.error({err, id}, 'updateServerAction failed');
     await recordAudit({userId: user.id, serverId: id, action: 'server.update', target: name, result: 'error'});
-    return fieldErrorState(describeError(err));
+    return fieldErrorState(describeError(err, await serverLabel(id)));
   }
 }
 
@@ -163,7 +158,7 @@ export async function deleteServerAction(formData: FormData): Promise<SimpleResu
   } catch (err) {
     log.error({err, id}, 'deleteServerAction failed');
     await recordAudit({userId: user.id, action: 'server.delete', target: id, result: 'error'});
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(id))};
   }
 }
 
@@ -265,7 +260,7 @@ export async function refreshServerStatusAction(serverId: string): Promise<Simpl
   } catch (err) {
     await recordAudit({userId: user.id, serverId, action: 'server.refresh', result: 'error'});
     revalidatePath('/servers');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }
 

@@ -128,6 +128,46 @@ export interface PartialResult<T> {
 }
 
 /** Normalizes anything thrown by a source into a failure the interface can show. */
+/**
+ * What each failure kind means, in words an operator can act on. The raw enum
+ * name is not it: `tls_pin_mismatch` tells a developer what happened and tells
+ * an operator nothing.
+ *
+ * This map is also the seam translation will use — one place that turns a kind
+ * into a sentence, rather than the same phrase inlined at every call site.
+ */
+const KIND_PHRASE: Record<AaPanelErrorKind, string> = {
+  network: 'panel unreachable',
+  timeout: 'panel did not answer in time',
+  auth: 'panel rejected the API key',
+  panel_error: 'panel refused the request',
+  tls_pin_mismatch: 'panel presented a different TLS certificate',
+};
+
+/**
+ * The one phrasing for a panel failure shown to a person.
+ *
+ * `serverName` is what makes the message usable on a fleet: "panel presented a
+ * different TLS certificate" is alarming and useless when twenty panels are
+ * managed and it does not say whose (Д-4). Pass it wherever the message reaches
+ * a toast or a form. Omit it only where the surrounding context already names
+ * the server — a row in the servers table carries its own error, and repeating
+ * the name there would just be noise.
+ */
+export function describeError(err: unknown, serverName?: string): string {
+  const prefix = serverName ? `${serverName}: ` : '';
+  if (err instanceof AaPanelError) {
+    const phrase = KIND_PHRASE[err.kind];
+    // The panel's own wording is the part worth reading; keep it when it adds
+    // something the phrase does not already say.
+    return err.message && err.message !== phrase
+      ? `${prefix}${phrase} — ${err.message}`
+      : `${prefix}${phrase}`;
+  }
+  if (err instanceof Error) return `${prefix}${err.message}`;
+  return `${prefix}Unknown error`;
+}
+
 export function describeSourceFailure(source: string, err: unknown): SourceFailure {
   if (err instanceof AaPanelError) return {source, kind: err.kind, message: err.message};
   return {

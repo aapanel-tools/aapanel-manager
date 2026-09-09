@@ -1,7 +1,8 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireUser, requireAdmin, AuthError} from '@/lib/auth/guards';
-import {createClientForServer, AaPanelError} from '@/lib/aapanel';
+import {createClientForServer, describeError} from '@/lib/aapanel';
+import {serverLabel} from '@/lib/servers/label';
 import type {
   ServerMetrics,
   NodeProject,
@@ -51,12 +52,6 @@ async function loadServerCreds(id: string) {
   });
 }
 
-function describeError(err: unknown): string {
-  if (err instanceof AaPanelError) return `${err.kind}: ${err.message}`;
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
-}
-
 /** Flattens a ZodError's issues into a field → messages map for the form. */
 function collectFieldErrors(issues: {path: PropertyKey[]; message: string}[]): Record<string, string[]> {
   const fieldErrors: Record<string, string[]> = {};
@@ -85,7 +80,7 @@ export async function getServerMetricsAction(serverId: string): Promise<MetricsR
     return {ok: true, metrics};
   } catch (err) {
     log.error({err, serverId}, 'getServerMetricsAction failed');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -103,7 +98,7 @@ export async function listNodeProjectsAction(serverId: string): Promise<Projects
     return {ok: true, projects};
   } catch (err) {
     log.error({err, serverId}, 'listNodeProjectsAction failed');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -155,7 +150,7 @@ export async function projectControlAction(
       target: projectName,
       result: 'error',
     });
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -173,7 +168,7 @@ export async function getProjectLogsAction(serverId: string, projectName: string
     return {ok: true, logs};
   } catch (err) {
     log.error({err, serverId, projectName}, 'getProjectLogsAction failed');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -210,7 +205,7 @@ export async function getProjectEditDataAction(
     return {ok: true, config, runScripts, nodeVersions};
   } catch (err) {
     log.error({err, serverId, projectName}, 'getProjectEditDataAction failed');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -228,7 +223,7 @@ export async function getProjectCreateEnvAction(serverId: string): Promise<Proje
     return {ok: true, preEnv};
   } catch (err) {
     log.error({err, serverId}, 'getProjectCreateEnvAction failed');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -247,7 +242,7 @@ export async function getRunListAction(serverId: string, projectCwd: string): Pr
     return {ok: true, scripts};
   } catch (err) {
     log.error({err, serverId}, 'getRunListAction failed');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -277,7 +272,7 @@ export async function createProjectAction(serverId: string, formData: FormData):
   } catch (err) {
     log.error({err, serverId, name: input.name}, 'createProjectAction failed');
     await recordAudit({userId, serverId, action: 'project.create', target: input.name, result: 'error'});
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -307,7 +302,7 @@ export async function modifyProjectAction(serverId: string, formData: FormData):
   } catch (err) {
     log.error({err, serverId, name: input.name}, 'modifyProjectAction failed');
     await recordAudit({userId, serverId, action: 'project.modify', target: input.name, result: 'error'});
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -343,7 +338,7 @@ export async function deleteProjectAction(serverId: string, formData: FormData):
   } catch (err) {
     log.error({err, serverId, name}, 'deleteProjectAction failed');
     await recordAudit({userId, serverId, action: 'project.delete', target: name, result: 'error'});
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: describeError(err, await serverLabel(serverId))};
   }
 }
 
@@ -366,6 +361,6 @@ export async function listDirAction(serverId: string, path: string): Promise<Lis
     return {ok: true, path: res.path, dirs: res.dirs};
   } catch (err) {
     log.error({err, serverId, path: target}, 'listDirAction failed');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }

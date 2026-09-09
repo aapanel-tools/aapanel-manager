@@ -64,7 +64,7 @@ export async function createClientForServer(server: ServerCreds): Promise<AaPane
 }
 
 export {AaPanelClient} from './client';
-export {AaPanelError, describeSourceFailure} from './types';
+export {AaPanelError, describeError, describeSourceFailure} from './types';
 export {PanelBusyError, panelOrigin} from './rate-limit';
 export {
   TlsPinMismatchError,

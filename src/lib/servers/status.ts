@@ -1,6 +1,6 @@
 import 'server-only';
 import {prisma} from '@/lib/db/prisma';
-import {createClientForServer, AaPanelError} from '@/lib/aapanel';
+import {createClientForServer, describeError} from '@/lib/aapanel';
 import {notifyServerChanged} from '@/lib/realtime/notify';
 import {log} from '@/log';
 
@@ -8,12 +8,6 @@ export interface RefreshResult {
   ok: boolean;
   online: boolean;
   message?: string;
-}
-
-function describeError(err: unknown): string {
-  if (err instanceof AaPanelError) return `${err.kind}: ${err.message}`;
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
 }
 
 /** Polls one server live, writes the result to the cache, notifies listeners.

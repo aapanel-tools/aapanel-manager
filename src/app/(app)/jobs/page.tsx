@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import {formatTimestamp} from '@/lib/format/datetime';
 import type {Route} from 'next';
 import {redirect} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
@@ -15,7 +16,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-const fmt = (d: Date): string => d.toISOString().slice(0, 19).replace('T', ' ');
 
 function tone(status: string): 'secondary' | 'destructive' | 'outline' {
   if (status === 'succeeded') return 'secondary';
@@ -69,7 +69,7 @@ export default async function JobsPage({
                   <TableRow key={r.id}>
                     <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
                       <Link href={`/jobs/${r.id}` as Route} className="underline underline-offset-2">
-                        {fmt(r.createdAt)}
+                        {formatTimestamp(r.createdAt)}
                       </Link>
                     </TableCell>
                     <TableCell className="font-mono text-xs">{r.kind}</TableCell>

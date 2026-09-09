@@ -14,7 +14,8 @@
     "settings": "Settings",
     "signOut": "Sign out",
     "audit": "Journal",
-    "jobs": "Operations"
+    "jobs": "Operations",
+    "fleet": "Summary"
   },
   "theme": {
     "label": "Theme",
@@ -438,6 +439,35 @@
       "failed": "Could not queue the operation.",
       "alreadyFinished": "The operation had already finished.",
       "missing id": "No operation given."
+    }
+  },
+  "fleet": {
+    "title": "Fleet summary",
+    "counts": {
+      "total": "servers",
+      "online": "online",
+      "offline": "not answering",
+      "unchecked": "never polled"
+    },
+    "attention": {
+      "title": "Needs attention",
+      "allClear": "All clear — no server is in trouble.",
+      "offline": "not answering",
+      "stale": "reading older than {minutes} min",
+      "disk": "disk {percent}%",
+      "memory": "memory {percent}%",
+      "checked": "checked {when}"
+    },
+    "active": {
+      "title": "Running now",
+      "none": "No jobs are running.",
+      "all": "all jobs",
+      "progress": "{done} of {total}"
+    },
+    "recent": {
+      "title": "Latest activity",
+      "none": "Nothing has happened yet.",
+      "all": "full journal"
     }
   }
 }

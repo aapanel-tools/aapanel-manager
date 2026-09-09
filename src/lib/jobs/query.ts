@@ -55,7 +55,12 @@ function tally(items: Array<{status: string}>): Pick<JobRow, 'total' | 'succeede
 }
 
 export async function listJobs(p: JobListParams): Promise<ListJobsResult> {
-  const where: Prisma.JobWhereInput = p.status === 'all' ? {} : {status: p.status};
+  const where: Prisma.JobWhereInput =
+    p.status === 'all'
+      ? {}
+      : p.status === 'active'
+        ? {status: {in: ['pending', 'running']}}
+        : {status: p.status};
   const [records, total] = await Promise.all([
     prisma.job.findMany({
       where,

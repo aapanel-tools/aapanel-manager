@@ -16,6 +16,14 @@ const EnvSchema = z.object({
   // a deliberate speed bump: touching hundreds of customer machines at once should
   // be a decision, not the result of clicking "select all".
   JOB_MAX_SERVERS: z.coerce.number().int().min(1).max(500).default(50),
+  // When the fleet summary starts calling a server's disk or memory worth
+  // looking at. Two numbers rather than one on purpose: high memory use is
+  // usually a healthy cache and says little, while a disk filling up is an
+  // outage that has not happened yet — it deserves a warning with room to act.
+  // Both are judgement, not measurement: a fleet of build machines may want
+  // them higher, a fleet of mail servers lower.
+  FLEET_DISK_WARN_PERCENT: z.coerce.number().min(1).max(100).default(85),
+  FLEET_MEM_WARN_PERCENT: z.coerce.number().min(1).max(100).default(90),
   // Run the background poller inside the web process. Set to "false" only when
   // running a dedicated worker process instead. Anything other than
   // false/0/no/off counts as enabled. (z.coerce.boolean is intentionally NOT

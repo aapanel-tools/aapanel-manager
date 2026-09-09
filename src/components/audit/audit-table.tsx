@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import {formatTimestamp} from '@/lib/format/datetime';
 import type {Route} from 'next';
 import {getTranslations} from 'next-intl/server';
 import type {AuditRow} from '@/lib/audit';
@@ -14,11 +15,6 @@ import {
 } from '@/components/ui/table';
 
 const DEFAULT_PAGE_SIZE = 50;
-
-/** Same deterministic shape as the users table — no locale, no hydration drift. */
-function fmt(date: Date): string {
-  return date.toISOString().slice(0, 19).replace('T', ' ');
-}
 
 /** Rebuilds the URL for another page, carrying every active filter along. */
 function pageHref(params: AuditListParams, page: number): Route {
@@ -68,7 +64,7 @@ export async function AuditTable({rows, total, params}: AuditTableProps) {
             {rows.map((r) => (
               <TableRow key={r.id}>
                 <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-                  {fmt(r.createdAt)}
+                  {formatTimestamp(r.createdAt)}
                 </TableCell>
                 <TableCell>{r.userEmail ?? <span className="text-muted-foreground">{t('gone')}</span>}</TableCell>
                 <TableCell>

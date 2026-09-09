@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import {formatTimestampOrNull} from '@/lib/format/datetime';
 import type {Route} from 'next';
 import {notFound, redirect} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
@@ -6,10 +7,6 @@ import {requireUser} from '@/lib/auth/guards';
 import {getJob} from '@/lib/jobs/query';
 import {projectControlParams} from '@/lib/jobs/kinds';
 import {JobDetail, type JobDetailView} from '@/components/jobs/job-detail';
-
-/** Same deterministic shape used elsewhere: no locale, no hydration drift. */
-const fmt = (d: Date | null): string | null =>
-  d ? d.toISOString().slice(0, 19).replace('T', ' ') : null;
 
 /**
  * One line describing what the job does.
@@ -42,9 +39,9 @@ export default async function JobPage({params}: {params: Promise<{id: string}>})
     stopOnError: job.stopOnError,
     cancelRequested: job.cancelRequested,
     createdByEmail: job.createdByEmail,
-    createdAt: fmt(job.createdAt) ?? '',
-    startedAt: fmt(job.startedAt),
-    finishedAt: fmt(job.finishedAt),
+    createdAt: formatTimestampOrNull(job.createdAt) ?? '',
+    startedAt: formatTimestampOrNull(job.startedAt),
+    finishedAt: formatTimestampOrNull(job.finishedAt),
     summary: summarize(job.kind, job.params),
     total: job.total,
     succeeded: job.succeeded,

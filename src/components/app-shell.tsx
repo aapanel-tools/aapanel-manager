@@ -11,7 +11,8 @@ export async function AppShell({children, isAdmin = false}: {children: React.Rea
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b px-4 py-2">
         <nav className="flex items-center gap-4">
-          <Link href="/servers" className="font-semibold">aaPanel Manager</Link>
+          <Link href="/" className="font-semibold">aaPanel Manager</Link>
+          <Link href="/" className="text-sm text-muted-foreground">{t('fleet')}</Link>
           <Link href="/servers" className="text-sm text-muted-foreground">{t('servers')}</Link>
           {isAdmin && (
             <Link href={'/jobs' as Route} className="text-sm text-muted-foreground">{t('jobs')}</Link>

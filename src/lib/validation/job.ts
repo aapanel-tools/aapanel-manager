@@ -13,9 +13,15 @@ export const jobListParamsSchema = z.object({
       .catch(25)
       .transform((n) => Math.min(100, Math.max(10, n))),
   ),
+  /**
+   * `active` means pending or running — "what is happening right now", which is
+   * one question, not two. The fleet summary asks it; without this it would
+   * either issue two queries or paginate past finished jobs to find the live
+   * ones.
+   */
   status: z.preprocess(
     first,
-    z.enum(['all', 'pending', 'running', 'succeeded', 'failed', 'cancelled']).catch('all'),
+    z.enum(['all', 'active', 'pending', 'running', 'succeeded', 'failed', 'cancelled']).catch('all'),
   ),
 });
 

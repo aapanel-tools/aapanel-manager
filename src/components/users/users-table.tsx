@@ -10,11 +10,7 @@ import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/c
 import {UserFormDialog} from '@/components/users/user-form-dialog';
 import {UserEditDialog} from '@/components/users/user-edit-dialog';
 import {UserDeleteDialog} from '@/components/users/user-delete-dialog';
-
-/** Deterministic timestamp (no locale/timezone) to avoid SSR/CSR hydration drift. */
-function fmt(iso: string): string {
-  return iso.slice(0, 16).replace('T', ' ');
-}
+import {formatTimestamp} from '@/lib/format/datetime';
 
 export function UsersTable({initial}: {initial: UsersListResult}) {
   const t = useTranslations('users');
@@ -96,7 +92,7 @@ export function UsersTable({initial}: {initial: UsersListResult}) {
                     </Badge>
                   )}
                 </TableCell>
-                <TableCell className="text-muted-foreground">{fmt(u.createdAt)}</TableCell>
+                <TableCell className="text-muted-foreground">{formatTimestamp(u.createdAt, 'minutes')}</TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">
                     <UserEditDialog

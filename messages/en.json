@@ -32,8 +32,7 @@
     "navAudit": "Audit",
     "soon": "soon",
     "accountTitle": "Account",
-    "accountSubtitle": "Personal settings for your account",
-    "selfTlsPinned": "Self-signed certificate (trust this one only)"
+    "accountSubtitle": "Personal settings for your account"
   },
   "servers": {
     "title": "Servers",
@@ -88,7 +87,8 @@
     "tlsSubject": "Issued to",
     "tlsIssuer": "Issued by",
     "tlsValidTo": "Valid until",
-    "tlsUseFingerprint": "Use this fingerprint"
+    "tlsUseFingerprint": "Use this fingerprint",
+    "bulk": "On several servers"
   },
   "detail": {
     "backToServers": "Servers",
@@ -214,7 +214,7 @@
   },
   "listNotice": {
     "incompleteTitle": "The list is incomplete",
-    "failureLine": "{source} did not answer: {reason}",
+    "failureLine": "{source}: {reason}",
     "truncatedTitle": "Not the whole list is shown",
     "truncatedKnown": "{source}: showing {shown} of {total}",
     "truncatedUnknown": "{source}: showing {shown}, there may be more"
@@ -350,7 +350,8 @@
     "errNotGitRepo": "This is not a git repository — reinstall the app via git clone.",
     "errUpdateInProgress": "An update is already running.",
     "errNothingStaged": "There is no prepared update.",
-    "errReleaseNotFound": "Release not found."
+    "errReleaseNotFound": "Release not found.",
+    "selfTlsPinned": "Self-signed certificate (trust this one only)"
   },
   "users": {
     "title": "Users",

@@ -32,8 +32,7 @@
     "navAudit": "Аудит",
     "soon": "скоро",
     "accountTitle": "Аккаунт",
-    "accountSubtitle": "Личные настройки вашей учётной записи",
-    "selfTlsPinned": "Самоподписанный сертификат (доверять только этому)"
+    "accountSubtitle": "Личные настройки вашей учётной записи"
   },
   "servers": {
     "title": "Серверы",
@@ -88,7 +87,8 @@
     "tlsSubject": "Кому выдан",
     "tlsIssuer": "Кем выдан",
     "tlsValidTo": "Действителен до",
-    "tlsUseFingerprint": "Использовать этот отпечаток"
+    "tlsUseFingerprint": "Использовать этот отпечаток",
+    "bulk": "На нескольких серверах"
   },
   "detail": {
     "backToServers": "Серверы",
@@ -214,7 +214,7 @@
   },
   "listNotice": {
     "incompleteTitle": "Список неполный",
-    "failureLine": "{source} не ответил: {reason}",
+    "failureLine": "{source}: {reason}",
     "truncatedTitle": "Показан не весь список",
     "truncatedKnown": "{source}: показано {shown} из {total}",
     "truncatedUnknown": "{source}: показано {shown}, возможно, есть ещё"
@@ -350,7 +350,8 @@
     "errNotGitRepo": "Это не git-репозиторий — переустановите приложение через git clone.",
     "errUpdateInProgress": "Обновление уже выполняется.",
     "errNothingStaged": "Нет подготовленного обновления.",
-    "errReleaseNotFound": "Релиз не найден."
+    "errReleaseNotFound": "Релиз не найден.",
+    "selfTlsPinned": "Самоподписанный сертификат (доверять только этому)"
   },
   "users": {
     "title": "Пользователи",

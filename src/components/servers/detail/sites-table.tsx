@@ -86,7 +86,13 @@ export function SitesTable({id, initial}: SitesTableProps) {
       <div>
         {header}
         {partial}
-        <p className="text-sm text-muted-foreground">{t('noSites')}</p>
+        {/* "No sites" is a claim about the server, and it is only true when
+            every source answered. With a failure standing, the same words are
+            the silent-empty lie the banner above exists to prevent — so the
+            banner is left to speak alone. */}
+        {result.failures.length === 0 && (
+          <p className="text-sm text-muted-foreground">{t('noSites')}</p>
+        )}
       </div>
     );
   }

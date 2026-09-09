@@ -113,7 +113,11 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
       <div>
         {header}
         {partial}
-        <p className="text-sm text-muted-foreground">{t('noDatabases')}</p>
+        {/* Same reasoning as the sites table: with an engine still owing an
+            answer, "no databases" states as fact what the app does not know. */}
+        {result.ok && result.failures.length === 0 && (
+          <p className="text-sm text-muted-foreground">{t('noDatabases')}</p>
+        )}
       </div>
     );
   }

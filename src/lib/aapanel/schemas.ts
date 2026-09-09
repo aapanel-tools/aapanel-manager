@@ -126,3 +126,87 @@ export const pgsqlDatabaseListResponse = envelope(
     }),
   ),
 );
+
+// ---------------------------------------------------------------------------
+// Site card
+//
+// Five endpoints answer with five different envelope shapes. That is not
+// tidiness lost in translation — it is what the panel actually sends, and a
+// schema that smoothed it over would be describing a panel that does not exist.
+// ---------------------------------------------------------------------------
+
+/**
+ * Domains bound to one site.
+ *
+ * `message` is the array itself here, with no `data` wrapper — from the very
+ * same `getData` endpoint that wraps the site list. One endpoint, two shapes,
+ * chosen by `table`. Hence no `pagedList`: it would look for a field the panel
+ * does not send and reject every answer.
+ *
+ * An internationalised domain and its punycode form arrive as separate rows,
+ * each with its own id, so a site with one name can list two domains.
+ */
+export const siteDomainListResponse = envelope(
+  z.array(
+    z.object({
+      id: z.number(),
+      /** Id of the site the domain belongs to. */
+      pid: z.number(),
+      name: z.string(),
+      port: z.number().default(80),
+      addtime: z.string().default(''),
+    }),
+  ),
+);
+
+/** Document root, the subdirectory actually served, and the protections on it. */
+export const siteDirUserIniResponse = envelope(
+  z.object({
+    logs: z.object({result: z.boolean()}).optional(),
+    userini: z.boolean().optional(),
+    runPath: z
+      .object({runPath: z.string().default('/'), dirs: z.array(z.string()).default([])})
+      .optional(),
+    pass: z.object({result: z.boolean()}).optional(),
+  }),
+);
+
+/**
+ * SSL state of one site.
+ *
+ * `cert_data` is deliberately `unknown`. The captured panel had no certificate
+ * installed and sent null, so its shape has never been seen here. Inventing
+ * fields for it would put a guess into the one layer whose job is to reject
+ * guesses; it is carried through untyped until a real certificate is captured
+ * from a panel that has one.
+ */
+export const siteSslResponse = envelope(
+  z.object({
+    status: z.boolean().default(false),
+    oid: z.number().default(-1),
+    domain: z.array(z.object({name: z.string()})).default([]),
+    httpTohttps: z.boolean().default(false),
+    cert_data: z.unknown().optional(),
+    email: z.string().default(''),
+    auth_type: z.string().default(''),
+    tls_versions: z.record(z.string(), z.boolean()).default({}),
+    auto_renew: z.union([z.number(), z.boolean()]).default(-1),
+  }),
+);
+
+/**
+ * PHP version of one site.
+ *
+ * `phpversion` arrives without the dot — "83" for 8.3 — while the site list
+ * sends "8.3" for the same value. Both are strings, so nothing crashes; the
+ * mismatch would simply show up as a wrong-looking version in the interface.
+ */
+export const sitePhpVersionResponse = envelope(
+  z.object({
+    phpversion: z.string().default(''),
+    php_other: z.string().default(''),
+  }),
+);
+
+/** Access log. An empty `result` means no entries, not a failure. */
+export const siteLogsResponse = envelope(z.object({result: z.string().default('')}));

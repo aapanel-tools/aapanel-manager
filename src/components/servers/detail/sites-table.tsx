@@ -7,6 +7,7 @@ import type {SiteListResult} from '@/server/actions/sites';
 import {listSitesAction} from '@/server/actions/sites';
 import {Button} from '@/components/ui/button';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
+import {SiteDetailDialog} from '@/components/servers/detail/site-detail-dialog';
 import {Badge} from '@/components/ui/badge';
 import {
   Table,
@@ -104,6 +105,7 @@ export function SitesTable({id, initial}: SitesTableProps) {
             <TableHead>{t('domains')}</TableHead>
             <TableHead>{t('path')}</TableHead>
             <TableHead>{t('status')}</TableHead>
+            <TableHead className="w-0" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -146,6 +148,17 @@ export function SitesTable({id, initial}: SitesTableProps) {
                 >
                   {s.running ? t('running') : t('stopped')}
                 </Badge>
+              </TableCell>
+              <TableCell className="text-right">
+                <SiteDetailDialog
+                  id={id}
+                  site={s}
+                  trigger={
+                    <Button variant="ghost" size="sm">
+                      {t('details')}
+                    </Button>
+                  }
+                />
               </TableCell>
             </TableRow>
           ))}

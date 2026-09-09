@@ -9,7 +9,12 @@ import {
   projectInfoResponse,
   projectListResponse,
   projectLogResponse,
+  siteDirUserIniResponse,
+  siteDomainListResponse,
   siteListResponse,
+  siteLogsResponse,
+  sitePhpVersionResponse,
+  siteSslResponse,
   type RawNodeProjectParsed,
 } from './schemas';
 import {TlsPinMismatchError, dispatcherFor, formatFingerprint} from './tls';
@@ -36,6 +41,11 @@ import {
   type ProjectCreateInput,
   type Database,
   type Site,
+  type SiteDetail,
+  type SiteDirectory,
+  type SiteDomain,
+  type SiteSsl,
+  type SourceFailure,
   type DbEngine,
   type DbCreateInput,
   type PartialResult,
@@ -295,7 +305,7 @@ export class AaPanelClient {
   /**
    * List Node.js projects with pagination, status, and CPU/RAM per project.
    *
-   * Field mapping sourced from docs/en/nodejs-projects.md §get_project_list:
+   * Captured from a live v8 panel:
    *   run                              → true=running, false=stopped
    *   name                             → project name
    *   path                             → project directory
@@ -327,7 +337,7 @@ export class AaPanelClient {
   /**
    * Info about a single Node.js project.
    *
-   * Field mapping sourced from docs/en/nodejs-projects.md §get_project_info.
+   * Captured from a live v8 panel.
    * Same shape as a list item; response is message (single object, no data[] wrapper).
    */
   async getProjectInfo(name: string): Promise<NodeProject> {
@@ -340,7 +350,7 @@ export class AaPanelClient {
   /**
    * Start, stop, or restart one or more Node.js projects.
    *
-   * Field mapping sourced from docs/en/nodejs-projects.md §batch_operation_project.
+   * Captured from a live v8 panel.
    * FLAT body (no data= wrapper): project_names=<json-array> + operation_type.
    */
   async batchOperation(
@@ -358,7 +368,7 @@ export class AaPanelClient {
   /**
    * Run commands from the `scripts` section of a project's `package.json`.
    *
-   * Source: docs/en/nodejs-projects.md §get_run_list.
+   * Captured from a live v8 panel.
    *   POST /v2/project/nodejs/get_run_list, body data={"project_cwd":"<path>"}
    *   Success: { status: 0, message: { "<key>": "<command>", ... } }
    *   Error  : { status: -1, message: { error_msg: "...", data: "..." } }
@@ -383,7 +393,7 @@ export class AaPanelClient {
 
   /**
    * Node.js versions installed in the panel.
-   * Source: docs/en/nodejs-projects.md §get_nodejs_version (data= empty).
+   * Captured from a live v8 panel (data= empty).
    */
   async getNodeVersions(): Promise<string[]> {
     const raw = await this.post<{status: number; message: unknown}>(
@@ -400,7 +410,7 @@ export class AaPanelClient {
    * Metadata for the create-project form (Node versions, package managers,
    * system users, RAM cap).
    *
-   * Source: docs/en/nodejs-projects.md §pre_env. NOTE the different path:
+   * Captured from a live v8 panel. NOTE the different path:
    * POST /v2/mod/nodejs/com/pre_env (no `data` field, auth fields only).
    */
   async getCreateEnv(): Promise<ProjectPreEnv> {
@@ -431,7 +441,7 @@ export class AaPanelClient {
   /**
    * Full configuration of a single project, for the edit form.
    * Reads `get_project_info` and pulls fields out of `project_config`.
-   * Source: docs/en/nodejs-projects.md §get_project_info.
+   * Captured from a live v8 panel.
    */
   async getProjectConfig(name: string): Promise<NodeProjectConfig> {
     const data = JSON.stringify({project_name: name});
@@ -477,7 +487,7 @@ export class AaPanelClient {
 
   /**
    * Create a new Node.js project ("Default project" mode).
-   * Source: docs/en/nodejs-projects.md §create_project.
+   * Captured from a live v8 panel.
    */
   async createProject(input: ProjectCreateInput): Promise<void> {
     const data = JSON.stringify({
@@ -503,7 +513,7 @@ export class AaPanelClient {
 
   /**
    * Modify an existing project's settings.
-   * Source: docs/en/nodejs-projects.md §modify_project.
+   * Captured from a live v8 panel.
    */
   async modifyProject(input: ProjectModifyInput): Promise<void> {
     const data = JSON.stringify({
@@ -526,7 +536,7 @@ export class AaPanelClient {
   /**
    * Delete a project (removes it from the panel; the on-disk directory is
    * preserved). Goes through `batch_operation_project` with operation_type=delete.
-   * Source: docs/en/nodejs-projects.md §batch_operation_project (delete).
+   * Captured from a live v8 panel (delete).
    */
   async deleteProject(name: string): Promise<void> {
     const result = await this.batchOperation([name], 'delete');
@@ -572,7 +582,7 @@ export class AaPanelClient {
   /**
    * Retrieve PM2/build log for a Node.js project.
    *
-   * Field mapping sourced from docs/en/nodejs-projects.md §Logs (§10):
+   * Captured from a live v8 panel:
    *   POST /v2/project/nodejs/get_project_log
    *   Body: data={"project_name":"<name>"}
    *   Response: { status: 0, message: { result: "<log text>" } }
@@ -587,7 +597,7 @@ export class AaPanelClient {
 
   /**
    * List the sub-directories of a path — backs the directory picker used when
-   * creating a project. Source: docs/en/files.md §GetDirNew (flat body).
+   * creating a project. Captured from a live v8 panel (flat body).
    * Returns only folder names (files are ignored here).
    */
   async listDir(path: string): Promise<{path: string; dirs: string[]}> {
@@ -618,7 +628,7 @@ export class AaPanelClient {
   /**
    * Liveness + basic metrics.
    *
-   * Field mapping sourced from docs/en/system-monitoring.md (real v8 panel response):
+   * Captured from a live v8 panel:
    *   cpuRealUsed  → CPU usage in % (float, e.g. 5.9)
    *   memTotal     → total RAM in MB (e.g. 5782)
    *   memRealUsed  → RAM actually used in MB (e.g. 1125)
@@ -639,7 +649,7 @@ export class AaPanelClient {
   /**
    * Disk usage percent of the root mount ('/'), else the first parsable mount; null if none.
    *
-   * Response shape sourced from docs/en/system-monitoring.md (real v8 panel):
+   * Captured from a live v8 panel:
    *   Array of { path, size: [total, used, free, "32%"] }
    *   size[3] is the use-percent string (e.g. "32%").
    */
@@ -675,7 +685,7 @@ export class AaPanelClient {
   /**
    * Realtime network speeds and system load average.
    *
-   * Field mapping sourced from docs/en/system-monitoring.md §GetNetWork (real panel):
+   * Captured from a live v8 panel:
    *   up   → upload speed, KB/s (top-level number)
    *   down → download speed, KB/s (top-level number)
    *   load → OBJECT {one, five, fifteen, max, limit, safe} — NOT an array
@@ -706,7 +716,7 @@ export class AaPanelClient {
   /**
    * Rich server metrics for the Overview page.
    *
-   * Field mapping sourced from docs/en/system-monitoring.md:
+   * Captured from a live v8 panel:
    *   GetSystemTotal: cpuRealUsed (cpu %), cpuNum (cores),
    *                   memTotal/memRealUsed (MB)
    *   GetDiskInfo:    size[3] → use% string e.g. "40%"
@@ -745,7 +755,7 @@ export class AaPanelClient {
    * tell "no databases" from "MySQL did not answer" may create a duplicate or delete
    * something they think is stray. Passwords are never included in the output.
    *
-   * Field sources: docs/en/databases.md
+   * Captured from a live v8 panel
    *   MySQL  POST /v2/data?action=getData  (flat body: table=databases&p=1&limit=...)
    *   PG     POST /v2/database/pgsql/get_list  (body: data=<JSON {p,limit,search,table}>)
    */
@@ -872,9 +882,135 @@ export class AaPanelClient {
   }
 
   /**
+   * Everything the site card shows, gathered from four independent calls.
+   *
+   * Each section fails on its own. A card that refused to render because SSL
+   * timed out would hide the domain list, and a blank domain list reads as
+   * "this site has no domains" rather than "the app did not manage to ask"
+   * (ADR-0003, applied to an object rather than a list).
+   *
+   * The four run in parallel and the per-panel limiter (ADR-0004) decides how
+   * many actually leave at once — which is why this stays four calls and not a
+   * queue of its own.
+   *
+   * Three of the four identify a site by its primary domain rather than by id;
+   * the fourth wants both, plus the document root.
+   */
+  async getSiteDetail(site: {id: number; name: string; path: string}): Promise<SiteDetail> {
+    const failures: SourceFailure[] = [];
+
+    const [domains, directory, ssl, phpVersion] = await Promise.all([
+      (async (): Promise<SiteDomain[] | null> => {
+        try {
+          const raw = await this.post(
+            'v2/data?action=getData',
+            {table: 'domain', list: 'True', search: String(site.id)},
+            siteDomainListResponse,
+          );
+          // unwrapEnvelope is skipped here on purpose: its default type assumes
+          // an object payload, and this endpoint's payload is the array itself.
+          if (raw.status !== 0) throw new AaPanelError('panel_error', 'Operation failed');
+          return raw.message.map((d) => ({
+            id: d.id,
+            name: d.name,
+            port: d.port,
+            addtime: d.addtime,
+          }));
+        } catch (err) {
+          failures.push(describeSourceFailure('domains', err));
+          return null;
+        }
+      })(),
+
+      (async (): Promise<SiteDirectory | null> => {
+        try {
+          const raw = await this.post(
+            'v2/site?action=GetDirUserINI',
+            {id: String(site.id), path: site.path},
+            siteDirUserIniResponse,
+          );
+          const msg = this.unwrapEnvelope<typeof raw.message>(raw);
+          return {
+            runPath: msg.runPath?.runPath ?? '/',
+            availableDirs: msg.runPath?.dirs ?? [],
+            userIniProtected: msg.userini ?? false,
+            accessLogEnabled: msg.logs?.result ?? false,
+            passwordProtected: msg.pass?.result ?? false,
+          };
+        } catch (err) {
+          failures.push(describeSourceFailure('directory', err));
+          return null;
+        }
+      })(),
+
+      (async (): Promise<SiteSsl | null> => {
+        try {
+          const raw = await this.post(
+            'v2/site?action=GetSSL',
+            {siteName: site.name},
+            siteSslResponse,
+          );
+          const msg = this.unwrapEnvelope<typeof raw.message>(raw);
+          return {
+            enabled: msg.status,
+            forceHttps: msg.httpTohttps,
+            domains: msg.domain.map((d) => d.name),
+            tlsVersions: msg.tls_versions,
+            // -1 means off. The field is a number on the panel this was
+            // captured from, but a boolean is cheap to allow for and the
+            // alternative is an "on" badge on a site that renews nothing.
+            autoRenew: msg.auto_renew === true || msg.auto_renew === 1,
+            email: msg.email,
+            certificate: msg.cert_data ?? null,
+          };
+        } catch (err) {
+          failures.push(describeSourceFailure('ssl', err));
+          return null;
+        }
+      })(),
+
+      (async (): Promise<string | null> => {
+        try {
+          const raw = await this.post(
+            'v2/site?action=GetSitePHPVersion',
+            {siteName: site.name},
+            sitePhpVersionResponse,
+          );
+          const msg = this.unwrapEnvelope<typeof raw.message>(raw);
+          return dottedPhpVersion(msg.phpversion);
+        } catch (err) {
+          failures.push(describeSourceFailure('php', err));
+          return null;
+        }
+      })(),
+    ]);
+
+    return {domains, directory, ssl, phpVersion, failures};
+  }
+
+  /**
+   * Tail of the site's access log.
+   *
+   * Kept out of getSiteDetail and fetched only when the log is actually looked
+   * at: it is the one part of the card that can be large, and pulling a hundred
+   * lines for a tab nobody opens spends a slot on someone's production panel.
+   *
+   * An empty string is a real answer — a site with no traffic yet — and callers
+   * must not turn it into an error.
+   */
+  async getSiteLogs(siteName: string, lines = 100): Promise<string> {
+    const raw = await this.post(
+      'v2/site?action=GetSiteLogs',
+      {siteName, lines: String(lines), ip_area: '0'},
+      siteLogsResponse,
+    );
+    return this.unwrapEnvelope<typeof raw.message>(raw).result;
+  }
+
+  /**
    * Create a MySQL or PostgreSQL database.
    *
-   * Field sources: docs/en/databases.md
+   * Captured from a live v8 panel
    *   MySQL POST /v2/database?action=AddDatabase (flat body)
    *   PG    POST /v2/database/pgsql/AddDatabase  (body: data=<JSON>)
    */
@@ -922,7 +1058,7 @@ export class AaPanelClient {
   /**
    * Delete a MySQL or PostgreSQL database by id and name.
    *
-   * Field sources: docs/en/databases.md
+   * Captured from a live v8 panel
    *   MySQL POST /v2/database?action=DeleteDatabase (flat body: name=&id=)
    *   PG    POST /v2/database/pgsql/DeleteDatabase   (body: data=<JSON {id,name}>)
    */
@@ -992,7 +1128,7 @@ export class AaPanelClient {
 
 /**
  * Raw project shape shared by get_project_list items and get_project_info message.
- * Docs: docs/en/nodejs-projects.md §1 and §2.
+ * Captured from a live v8 panel.
  */
 /**
  * One project as the panel reports it. Shape comes from the response schema, so the
@@ -1008,6 +1144,19 @@ type RawNodeProject = RawNodeProjectParsed;
  * cpu: sum of cpu_percent across all load_info entries (null when load_info is empty).
  * mem: sum of memory_used bytes across all entries, converted to MB (null when empty).
  */
+/**
+ * The panel's two spellings of one PHP version, reduced to the readable one.
+ *
+ * The site list sends "8.3"; the site's own PHP endpoint sends "83" for the
+ * same install. Neither is wrong, but showing both in one interface makes the
+ * card look like it disagrees with the list it was opened from. "83" becomes
+ * "8.3"; anything already dotted, empty, or shaped some third way is passed
+ * through untouched rather than mangled by a rule written for two digits.
+ */
+function dottedPhpVersion(raw: string): string {
+  return /^\d{2}$/.test(raw) ? `${raw[0]}.${raw[1]}` : raw;
+}
+
 /**
  * Does this site have a certificate?
  *

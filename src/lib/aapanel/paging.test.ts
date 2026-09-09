@@ -4,7 +4,7 @@ import {DEFAULT_PAGE_LIMIT, describePage, readPanelTotal} from './paging';
 
 describe('readPanelTotal', () => {
   it('reads the count out of the markup the panel actually sends', () => {
-    // Verbatim from a live panel's project list (docs/*/nodejs-projects.md).
+    // Verbatim from a live v8 panel’s project list.
     const page = "<div><span class='Pcurrent'>1</span><span class='Pcount'>Total 3</span></div>";
     expect(readPanelTotal(page)).toBe(3);
   });

@@ -2,7 +2,7 @@
 import {requireUser} from '@/lib/auth/guards';
 import {createClientForServer, describeError} from '@/lib/aapanel';
 import {serverLabel} from '@/lib/servers/label';
-import type {Site, SourceFailure, SourceTruncation} from '@/lib/aapanel';
+import type {Site, SiteDetail, SourceFailure, SourceTruncation} from '@/lib/aapanel';
 import {prisma} from '@/lib/db/prisma';
 import {log} from '@/log';
 
@@ -17,6 +17,12 @@ export type SiteListResult =
    */
   | {ok: true; sites: Site[]; failures: SourceFailure[]; truncations: SourceTruncation[]}
   | {ok: false; message: string};
+
+export type SiteDetailResult =
+  /** `detail.failures` says which parts of the card are missing and why. */
+  {ok: true; detail: SiteDetail} | {ok: false; message: string};
+
+export type SiteLogsResult = {ok: true; logs: string} | {ok: false; message: string};
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -57,6 +63,64 @@ export async function listSitesAction(serverId: string): Promise<SiteListResult>
     return {ok: true, sites: items, failures, truncations};
   } catch (err) {
     log.error({err, serverId}, 'listSitesAction failed');
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+  }
+}
+
+/**
+ * Loads the card for one site: domains, directory, SSL, PHP version.
+ *
+ * Read-only and unaudited, for the same reason the list is: the journal records
+ * what changed on someone else's production machine, and opening a card changes
+ * nothing.
+ *
+ * The site is passed in whole rather than looked up by id, because three of the
+ * four panel calls identify a site by its primary domain and one needs the
+ * document root. Re-fetching the list here to rediscover those would be a
+ * second request for data the caller is already looking at.
+ */
+export async function getSiteDetailAction(
+  serverId: string,
+  site: {id: number; name: string; path: string},
+): Promise<SiteDetailResult> {
+  try {
+    await requireUser();
+  } catch {
+    return {ok: false, message: 'unauthenticated'};
+  }
+  try {
+    const creds = await loadServerCreds(serverId);
+    const client = await createClientForServer(creds);
+    const detail = await client.getSiteDetail(site);
+    if (detail.failures.length > 0) {
+      log.warn({serverId, siteId: site.id, failures: detail.failures}, 'getSiteDetailAction partial');
+    }
+    return {ok: true, detail};
+  } catch (err) {
+    log.error({err, serverId, siteId: site.id}, 'getSiteDetailAction failed');
+    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+  }
+}
+
+/**
+ * Tail of a site's access log. Separate from the card so it is fetched only
+ * when someone opens that tab — see the client method for why.
+ */
+export async function getSiteLogsAction(
+  serverId: string,
+  siteName: string,
+): Promise<SiteLogsResult> {
+  try {
+    await requireUser();
+  } catch {
+    return {ok: false, message: 'unauthenticated'};
+  }
+  try {
+    const creds = await loadServerCreds(serverId);
+    const client = await createClientForServer(creds);
+    return {ok: true, logs: await client.getSiteLogs(siteName)};
+  } catch (err) {
+    log.error({err, serverId}, 'getSiteLogsAction failed');
     return {ok: false, message: describeError(err, await serverLabel(serverId))};
   }
 }

@@ -11,6 +11,12 @@ export interface ListIntegrityNoticeProps {
    * "MySQL", say. Left out where the key is already the word.
    */
   labelSource?: (source: string) => string;
+  /**
+   * Heading for the failures block. Defaults to the list wording, which is
+   * wrong for a card: "the list is incomplete" describes nothing an operator
+   * is looking at when half a site's card failed to load.
+   */
+  failuresTitle?: string;
 }
 
 /**
@@ -31,6 +37,7 @@ export function ListIntegrityNotice({
   failures,
   truncations,
   labelSource = (s) => s,
+  failuresTitle,
 }: ListIntegrityNoticeProps) {
   const t = useTranslations('listNotice');
 
@@ -43,7 +50,7 @@ export function ListIntegrityNotice({
     >
       {failures.length > 0 && (
         <>
-          <p className="font-medium">{t('incompleteTitle')}</p>
+          <p className="font-medium">{failuresTitle ?? t('incompleteTitle')}</p>
           <ul className="mt-1 space-y-0.5 text-xs opacity-80">
             {failures.map((f) => (
               <li key={`f-${f.source}`}>

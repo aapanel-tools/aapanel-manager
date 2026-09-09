@@ -251,7 +251,7 @@ describe('AaPanelClient.getMetrics', () => {
 
 // ---------------------------------------------------------------------------
 // Node.js project methods
-// Real response shapes documented in docs/en/nodejs-projects.md (live v8 panel).
+// Real response shapes documented in a live v8 panel (live v8 panel).
 // ---------------------------------------------------------------------------
 
 // Fixture: two projects (one running, one stopped) matching the real panel shape.
@@ -701,7 +701,7 @@ describe('AaPanelClient.deleteDatabase', () => {
 
 // ---------------------------------------------------------------------------
 // Node.js project CRUD methods
-// Real response shapes documented in docs/en/nodejs-projects.md (live v8 panel).
+// Real response shapes documented in a live v8 panel (live v8 panel).
 // ---------------------------------------------------------------------------
 
 describe('AaPanelClient.getRunList', () => {
@@ -1493,5 +1493,193 @@ describe('list truncation reaches the caller', () => {
 
     expect(failures).toHaveLength(1);
     expect(truncations).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Site card (Ф-1, slice 2)
+// ---------------------------------------------------------------------------
+
+describe('AaPanelClient.getSiteDetail', () => {
+  const cfg = {baseUrl: 'https://panel.example.com:8888', apiSk: 'k', tlsMode: 'VERIFY' as const};
+  const site = {id: 1, name: 'site.example.com', path: '/www/wwwroot/site.example.com'};
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  /** The four calls go out in parallel, so the mocks are keyed by URL, not order. */
+  function answerByEndpoint(answers: Record<string, unknown>) {
+    fetchMock.mockImplementation((url: unknown) => {
+      const href = String(url);
+      const key = Object.keys(answers).find((k) => href.includes(k));
+      if (!key) return Promise.resolve(jsonResponse({status: -1, message: 'unexpected'})) as never;
+      return Promise.resolve(jsonResponse(answers[key])) as never;
+    });
+  }
+
+  const OK_DOMAINS = {
+    status: 0,
+    message: [
+      {id: 2, pid: 1, name: 'site.example.com', port: 80, addtime: '2026-05-22 07:26:50'},
+      {id: 1, pid: 1, name: 'www.site.example.com', port: 80, addtime: '2026-05-22 07:26:50'},
+    ],
+  };
+  const OK_DIR = {
+    status: 0,
+    message: {
+      logs: {result: true},
+      userini: true,
+      runPath: {runPath: '/public', dirs: ['/', '/public']},
+      pass: {result: false},
+    },
+  };
+  const OK_SSL = {
+    status: 0,
+    message: {
+      status: false,
+      oid: -1,
+      domain: [{name: 'site.example.com'}],
+      httpTohttps: false,
+      cert_data: null,
+      email: 'admin@example.com',
+      auth_type: 'http',
+      tls_versions: {TLSv1: false, 'TLSv1.2': true},
+      auto_renew: -1,
+    },
+  };
+  const OK_PHP = {status: 0, message: {phpversion: '83', php_other: ''}};
+
+  it('reads the domain list from an envelope that is the array itself', async () => {
+    // The site list wraps rows in `data`; this endpoint does not, though both
+    // are getData. Getting this wrong loses every domain of every site.
+    answerByEndpoint({
+      'action=getData': OK_DOMAINS,
+      GetDirUserINI: OK_DIR,
+      GetSSL: OK_SSL,
+      GetSitePHPVersion: OK_PHP,
+    });
+    const detail = await new AaPanelClient(cfg).getSiteDetail(site);
+
+    expect(detail.failures).toEqual([]);
+    expect(detail.domains?.map((d) => d.name)).toEqual(['site.example.com', 'www.site.example.com']);
+    expect(detail.domains?.[0].port).toBe(80);
+  });
+
+  it('spells the PHP version the way the rest of the app does', async () => {
+    // The panel sends "83" here and "8.3" in the list. Showing both would make
+    // the card look like it disagrees with the table it was opened from.
+    answerByEndpoint({
+      'action=getData': OK_DOMAINS,
+      GetDirUserINI: OK_DIR,
+      GetSSL: OK_SSL,
+      GetSitePHPVersion: OK_PHP,
+    });
+    const detail = await new AaPanelClient(cfg).getSiteDetail(site);
+
+    expect(detail.phpVersion).toBe('8.3');
+  });
+
+  it('leaves an unfamiliar PHP version alone instead of mangling it', async () => {
+    answerByEndpoint({
+      'action=getData': OK_DOMAINS,
+      GetDirUserINI: OK_DIR,
+      GetSSL: OK_SSL,
+      GetSitePHPVersion: {status: 0, message: {phpversion: '8.4.1', php_other: ''}},
+    });
+    const detail = await new AaPanelClient(cfg).getSiteDetail(site);
+
+    expect(detail.phpVersion).toBe('8.4.1');
+  });
+
+  it('reports the served subdirectory, not just the document root', async () => {
+    answerByEndpoint({
+      'action=getData': OK_DOMAINS,
+      GetDirUserINI: OK_DIR,
+      GetSSL: OK_SSL,
+      GetSitePHPVersion: OK_PHP,
+    });
+    const detail = await new AaPanelClient(cfg).getSiteDetail(site);
+
+    expect(detail.directory).toMatchObject({
+      runPath: '/public',
+      userIniProtected: true,
+      accessLogEnabled: true,
+      passwordProtected: false,
+    });
+  });
+
+  it('reads auto-renewal off the panel\u2019s -1, not off truthiness', async () => {
+    answerByEndpoint({
+      'action=getData': OK_DOMAINS,
+      GetDirUserINI: OK_DIR,
+      GetSSL: OK_SSL,
+      GetSitePHPVersion: OK_PHP,
+    });
+    const detail = await new AaPanelClient(cfg).getSiteDetail(site);
+
+    // -1 is truthy; an "on" badge here would promise renewals that never happen.
+    expect(detail.ssl?.autoRenew).toBe(false);
+    expect(detail.ssl?.enabled).toBe(false);
+    expect(detail.ssl?.tlsVersions).toEqual({TLSv1: false, 'TLSv1.2': true});
+  });
+
+  it('keeps the rest of the card when one source refuses', async () => {
+    // The whole point of assembling the card from independent parts: an SSL
+    // refusal must not blank the domain list, or the operator reads "no
+    // domains" and believes it (ADR-0003).
+    answerByEndpoint({
+      'action=getData': OK_DOMAINS,
+      GetDirUserINI: OK_DIR,
+      GetSSL: {status: -1, message: 'denied'},
+      GetSitePHPVersion: OK_PHP,
+    });
+    const detail = await new AaPanelClient(cfg).getSiteDetail(site);
+
+    expect(detail.ssl).toBeNull();
+    expect(detail.failures.map((f) => f.source)).toEqual(['ssl']);
+    expect(detail.domains).toHaveLength(2);
+    expect(detail.phpVersion).toBe('8.3');
+  });
+
+  it('survives a panel that omits the optional directory fields', async () => {
+    answerByEndpoint({
+      'action=getData': OK_DOMAINS,
+      GetDirUserINI: {status: 0, message: {}},
+      GetSSL: OK_SSL,
+      GetSitePHPVersion: OK_PHP,
+    });
+    const detail = await new AaPanelClient(cfg).getSiteDetail(site);
+
+    expect(detail.failures).toEqual([]);
+    expect(detail.directory).toMatchObject({runPath: '/', availableDirs: []});
+  });
+});
+
+describe('AaPanelClient.getSiteLogs', () => {
+  const cfg = {baseUrl: 'https://panel.example.com:8888', apiSk: 'k', tlsMode: 'VERIFY' as const};
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns an empty log as an empty string, not as a failure', async () => {
+    // A site with no traffic yet. Turning this into an error would send an
+    // operator hunting for a problem that does not exist.
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {result: ''}}) as never);
+    await expect(new AaPanelClient(cfg).getSiteLogs('site.example.com')).resolves.toBe('');
+  });
+
+  it('asks for the requested number of lines', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {result: 'x'}}) as never);
+    await new AaPanelClient(cfg).getSiteLogs('site.example.com', 50);
+
+    const body = String((fetchMock.mock.calls[0][1] as {body: string}).body);
+    expect(body).toContain('lines=50');
+    expect(body).toContain('siteName=site.example.com');
   });
 });

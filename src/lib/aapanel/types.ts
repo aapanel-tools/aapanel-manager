@@ -19,7 +19,7 @@ export interface NodeProject {
 
 /**
  * One run command from a project's `package.json` `scripts` section.
- * Source: docs/en/nodejs-projects.md §get_run_list (`{key: command}` map).
+ * Captured from a live v8 panel (`{key: command}` map).
  */
 export interface RunScript {
   key: string; // script key, e.g. "start", "prod:start"
@@ -28,7 +28,7 @@ export interface RunScript {
 
 /**
  * Metadata for the create-project form.
- * Source: docs/en/nodejs-projects.md §pre_env.
+ * Captured from a live v8 panel.
  */
 export interface ProjectPreEnv {
   nodejsVersions: string[];
@@ -39,7 +39,7 @@ export interface ProjectPreEnv {
 
 /**
  * Full configuration of a single project, for the edit form.
- * Source: docs/en/nodejs-projects.md §get_project_info (`project_config`).
+ * Captured from a live v8 panel (`project_config`).
  */
 export interface NodeProjectConfig {
   name: string; // project_name
@@ -56,7 +56,7 @@ export interface NodeProjectConfig {
 
 /**
  * Input for `modify_project`.
- * Source: docs/en/nodejs-projects.md §modify_project.
+ * Captured from a live v8 panel.
  */
 export interface ProjectModifyInput {
   cwd: string;
@@ -71,7 +71,7 @@ export interface ProjectModifyInput {
 
 /**
  * Input for `create_project` ("Default project" mode).
- * Source: docs/en/nodejs-projects.md §create_project.
+ * Captured from a live v8 panel.
  */
 export interface ProjectCreateInput {
   cwd: string;
@@ -264,6 +264,67 @@ export interface Site {
   backupCount: number;
 }
 
+/** One domain bound to a site. A site normally has several. */
+export interface SiteDomain {
+  id: number;
+  name: string;
+  port: number;
+  addtime: string;
+}
+
+/**
+ * Where a site is served from, and what guards the directory.
+ *
+ * `runPath` is relative to the document root: "/" means the root itself, and a
+ * framework install often points it at "/public". Getting this wrong is how an
+ * operator ends up staring at a directory listing instead of a site.
+ */
+export interface SiteDirectory {
+  runPath: string;
+  availableDirs: string[];
+  /** `user.ini` guard: stops PHP escaping above the document root. */
+  userIniProtected: boolean;
+  accessLogEnabled: boolean;
+  passwordProtected: boolean;
+}
+
+/**
+ * TLS state of a site as the panel reports it.
+ *
+ * `certificate` stays `unknown` on purpose — see the schema. The panel this was
+ * captured from had no certificate, so the shape of that payload is unverified,
+ * and a typed guess here would be indistinguishable from a captured fact.
+ */
+export interface SiteSsl {
+  enabled: boolean;
+  forceHttps: boolean;
+  /** Domains the certificate covers — not always the site's own list. */
+  domains: string[];
+  /** Which TLS versions the site accepts, panel's own naming ("TLSv1.2"). */
+  tlsVersions: Record<string, boolean>;
+  autoRenew: boolean;
+  email: string;
+  certificate: unknown;
+}
+
+/**
+ * Everything the card shows about one site, assembled from four calls.
+ *
+ * Every section is nullable and `failures` says which source did not answer.
+ * The alternative — failing the whole card when one call does — would hide the
+ * domains because SSL timed out, and an operator reading a blank list concludes
+ * the site has no domains rather than that the app did not ask properly
+ * (ADR-0003 applied to an object instead of a list).
+ */
+export interface SiteDetail {
+  domains: SiteDomain[] | null;
+  directory: SiteDirectory | null;
+  ssl: SiteSsl | null;
+  /** Normalised to the dotted form: the panel sends "83" here and "8.3" in the list. */
+  phpVersion: string | null;
+  failures: SourceFailure[];
+}
+
 export interface DbCreateInput {
   engine: DbEngine;
   name: string;
@@ -284,7 +345,7 @@ export interface ServerSnapshot {
 
 /**
  * Rich server metrics for the Overview page.
- * Field sources: docs/en/system-monitoring.md (GetSystemTotal, GetDiskInfo, GetNetWork).
+ * Captured from a live v8 panel (GetSystemTotal, GetDiskInfo, GetNetWork).
  * Nulls indicate the sub-metric was unavailable (best-effort fields: disk, network, load).
  */
 export interface ServerMetrics {

@@ -37,6 +37,7 @@ vi.mock('@/lib/aapanel', async (orig) => {
           },
         ],
         failures: [],
+        truncations: [],
       }),
       createDatabase: async () => undefined,
       deleteDatabase: async () => undefined,
@@ -107,6 +108,7 @@ describe('listDatabasesAction', () => {
       listDatabases: async () => ({
         items: [],
         failures: [{source: 'mysql', kind: 'timeout', message: 'Request timed out'}],
+        truncations: [],
       }),
     } as never);
 

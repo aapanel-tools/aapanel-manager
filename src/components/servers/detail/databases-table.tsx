@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
 import {DatabaseFormDialog} from '@/components/servers/detail/database-form-dialog';
 import {DatabaseDeleteDialog} from '@/components/servers/detail/database-delete-dialog';
 
@@ -79,22 +80,13 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
   const engineLabel = (source: string): string =>
     source === 'mysql' || source === 'pgsql' ? t(source) : source;
 
-  const partial =
-    result.ok && result.failures.length > 0 ? (
-      <div
-        className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-        role="status"
-      >
-        <p className="font-medium">{t('partialTitle')}</p>
-        <ul className="mt-1 space-y-0.5 text-xs opacity-80">
-          {result.failures.map((f) => (
-            <li key={f.source}>
-              {t('partialLine', {source: engineLabel(f.source), reason: f.message})}
-            </li>
-          ))}
-        </ul>
-      </div>
-    ) : null;
+  const partial = result.ok ? (
+    <ListIntegrityNotice
+      failures={result.failures}
+      truncations={result.truncations}
+      labelSource={engineLabel}
+    />
+  ) : null;
 
   if (!result.ok) {
     return (

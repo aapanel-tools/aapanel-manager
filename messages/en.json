@@ -210,17 +210,20 @@
     "confirmDeleteLabel": "Type the database name to confirm",
     "created": "Database created",
     "deleted": "Database deleted",
-    "filterEngine": "Filter by engine",
-    "partialTitle": "This list may be incomplete",
-    "partialLine": "{source} did not answer: {reason}"
+    "filterEngine": "Filter by engine"
+  },
+  "listNotice": {
+    "incompleteTitle": "The list is incomplete",
+    "failureLine": "{source} did not answer: {reason}",
+    "truncatedTitle": "Not the whole list is shown",
+    "truncatedKnown": "{source}: showing {shown} of {total}",
+    "truncatedUnknown": "{source}: showing {shown}, there may be more"
   },
   "sites": {
     "title": "Sites",
     "refresh": "Refresh",
     "noSites": "This server has no sites.",
     "loadFailed": "Could not load the site list",
-    "partialTitle": "The list is incomplete",
-    "partialLine": "{source}: {reason}",
     "domain": "Domain",
     "type": "Type",
     "php": "PHP",

@@ -116,15 +116,40 @@ export interface SourceFailure {
 }
 
 /**
+ * One source that had more rows than were read from it.
+ *
+ * The counterpart to SourceFailure, and the second way a list can be short of
+ * the truth: nothing failed, the app simply stopped asking. `source` names the
+ * thing the way the domain does, exactly as it does for a failure.
+ *
+ * `total` is the panel's own count when its pagination markup could be read,
+ * and null when it could not. Null is "unknown", not "none" — an interface
+ * showing it must say "there may be more", not "0 more".
+ */
+export interface SourceTruncation {
+  source: string;
+  /** Rows actually read. */
+  shown: number;
+  total: number | null;
+}
+
+/**
  * Data plus what could not be fetched (ADR-0003).
  *
  * Used wherever a result is assembled from several independent sources, so that
  * a source falling over produces a visible gap instead of a shorter list that
  * looks complete. An empty `failures` is an assertion of completeness, not silence.
+ *
+ * `truncations` carries the same assertion about a different failure of
+ * completeness: a source that answered fine, but had more rows than were asked
+ * for. Both arrays are required rather than optional so that every list either
+ * claims to be whole or says how it is not — an absent field would be exactly
+ * the silence this type exists to prevent.
  */
 export interface PartialResult<T> {
   items: T[];
   failures: SourceFailure[];
+  truncations: SourceTruncation[];
 }
 
 /** Normalizes anything thrown by a source into a failure the interface can show. */

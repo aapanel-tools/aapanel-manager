@@ -10,6 +10,7 @@ import type {
   RunScript,
   ProjectPreEnv,
   NodeProjectConfig,
+  SourceTruncation,
 } from '@/lib/aapanel';
 import {recordAudit} from '@/lib/audit';
 import {prisma} from '@/lib/db/prisma';
@@ -25,7 +26,10 @@ import {
 // ---------------------------------------------------------------------------
 
 export type MetricsResult = {ok: true; metrics: ServerMetrics} | {ok: false; message: string};
-export type ProjectsResult = {ok: true; projects: NodeProject[]} | {ok: false; message: string};
+export type ProjectsResult =
+  /** `truncations` names sources with more rows than were read; empty means the list is whole. */
+  | {ok: true; projects: NodeProject[]; truncations: SourceTruncation[]}
+  | {ok: false; message: string};
 export type ControlResult = {ok: boolean; message: string};
 export type LogsResult = {ok: true; logs: string} | {ok: false; message: string};
 
@@ -94,8 +98,9 @@ export async function listNodeProjectsAction(serverId: string): Promise<Projects
   try {
     const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
-    const projects = await client.listProjects();
-    return {ok: true, projects};
+    const {items, truncations} = await client.listProjects();
+    if (truncations.length > 0) log.warn({serverId, truncations}, 'listNodeProjectsAction truncated');
+    return {ok: true, projects: items, truncations};
   } catch (err) {
     log.error({err, serverId}, 'listNodeProjectsAction failed');
     return {ok: false, message: describeError(err, await serverLabel(serverId))};

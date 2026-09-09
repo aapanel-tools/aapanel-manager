@@ -3,7 +3,7 @@ import {revalidatePath} from 'next/cache';
 import {requireUser, requireAdmin, AuthError} from '@/lib/auth/guards';
 import {createClientForServer, describeError} from '@/lib/aapanel';
 import {serverLabel} from '@/lib/servers/label';
-import type {Database, SourceFailure} from '@/lib/aapanel';
+import type {Database, SourceFailure, SourceTruncation} from '@/lib/aapanel';
 import {recordAudit} from '@/lib/audit';
 import {prisma} from '@/lib/db/prisma';
 import {log} from '@/log';
@@ -14,8 +14,11 @@ import {databaseCreateSchema, databaseDeleteSchema} from '@/lib/validation/datab
 // ---------------------------------------------------------------------------
 
 export type DbListResult =
-  /** `failures` lists engines that did not answer; empty means the list is complete. */
-  | {ok: true; databases: Database[]; failures: SourceFailure[]}
+  /**
+   * `failures` lists engines that did not answer, `truncations` engines that had
+   * more rows than were read. Both empty means the list is complete — and says so.
+   */
+  | {ok: true; databases: Database[]; failures: SourceFailure[]; truncations: SourceTruncation[]}
   | {ok: false; message: string};
 export type DbMutResult =
   | {ok: true; message?: string}
@@ -46,11 +49,12 @@ export async function listDatabasesAction(serverId: string): Promise<DbListResul
   try {
     const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
-    const {items, failures} = await client.listDatabases();
+    const {items, failures, truncations} = await client.listDatabases();
     // One engine failing still yields the other's list, but never silently:
     // the caller shows the gap and the log names the server (ADR-0003).
     if (failures.length > 0) log.warn({serverId, failures}, 'listDatabasesAction partial result');
-    return {ok: true, databases: items, failures};
+    if (truncations.length > 0) log.warn({serverId, truncations}, 'listDatabasesAction truncated');
+    return {ok: true, databases: items, failures, truncations};
   } catch (err) {
     log.error({err, serverId}, 'listDatabasesAction failed');
     return {ok: false, message: describeError(err, await serverLabel(serverId))};

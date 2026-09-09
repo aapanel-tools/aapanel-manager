@@ -34,7 +34,11 @@ vi.mock('@/lib/aapanel', async (orig) => {
         netUpKbps: 1,
         netDownKbps: 2,
       }),
-      listProjects: async () => [{name: 'app', status: 'running', port: 3000, path: '/x', cpu: 1, mem: 50}],
+      listProjects: async () => ({
+        items: [{name: 'app', status: 'running', port: 3000, path: '/x', cpu: 1, mem: 50}],
+        failures: [],
+        truncations: [],
+      }),
       batchOperation: async () => ({}),
       getProjectLogs: async () => 'log line 1\nlog line 2',
       getProjectConfig: async () => ({
@@ -173,7 +177,7 @@ describe('getServerMetricsAction', () => {
           getMetrics: async () => {
             throw new Error('panel down');
           },
-          listProjects: async () => [],
+          listProjects: async () => ({items: [], failures: [], truncations: []}),
           batchOperation: async () => ({}),
           getProjectLogs: async () => '',
         }) as never,

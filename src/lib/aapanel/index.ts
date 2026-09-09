@@ -66,6 +66,7 @@ export async function createClientForServer(server: ServerCreds): Promise<AaPane
 export {AaPanelClient} from './client';
 export {AaPanelError, describeError, describeSourceFailure} from './types';
 export {PanelBusyError, panelOrigin} from './rate-limit';
+export {DEFAULT_PAGE_LIMIT, describePage, readPanelTotal} from './paging';
 export {
   TlsPinMismatchError,
   formatFingerprint,
@@ -91,4 +92,5 @@ export type {
   DbCreateInput,
   PartialResult,
   SourceFailure,
+  SourceTruncation,
 } from './types';

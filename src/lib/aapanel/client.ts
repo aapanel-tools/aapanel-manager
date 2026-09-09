@@ -13,6 +13,7 @@ import {
   type RawNodeProjectParsed,
 } from './schemas';
 import {TlsPinMismatchError, dispatcherFor, formatFingerprint} from './tls';
+import {DEFAULT_PAGE_LIMIT, describePage} from './paging';
 import {
   DEFAULT_MAX_CONCURRENT,
   PanelBusyError,
@@ -303,16 +304,24 @@ export class AaPanelClient {
    *   load_info.<pid>.memory_used      → bytes → converted to MB
    *   load_info is empty {}            → project is stopped; cpu/mem = null
    */
-  async listProjects(params: {p?: number; limit?: number; search?: string; re_order?: string} = {}): Promise<NodeProject[]> {
+  async listProjects(
+    params: {p?: number; limit?: number; search?: string; re_order?: string} = {},
+  ): Promise<PartialResult<NodeProject>> {
+    const limit = params.limit ?? DEFAULT_PAGE_LIMIT;
     const data = JSON.stringify({
       p: params.p ?? 1,
-      limit: params.limit ?? 1000,
+      limit,
       search: params.search ?? '',
       re_order: params.re_order ?? '',
     });
     const raw = await this.post('v2/project/nodejs/get_project_list', {data}, projectListResponse);
 
-    return raw.message.data.map((p) => mapProject(p));
+    const items = raw.message.data.map((p) => mapProject(p));
+    const cut = describePage('projects', items.length, limit, raw.message.page);
+    // Failures stay empty here: unlike the database and site lists, this one has
+    // a single source and throws rather than degrading, so a caller either has
+    // the whole answer or an error.
+    return {items, failures: [], truncations: cut ? [cut] : []};
   }
 
   /**
@@ -744,7 +753,7 @@ export class AaPanelClient {
     params: {p?: number; limit?: number; search?: string} = {},
   ): Promise<PartialResult<Database>> {
     const p = params.p ?? 1;
-    const limit = params.limit ?? 1000;
+    const limit = params.limit ?? DEFAULT_PAGE_LIMIT;
     const search = params.search ?? '';
 
     const [mysql, pgsql] = await Promise.all([
@@ -755,7 +764,7 @@ export class AaPanelClient {
             {table: 'databases', p: String(p), limit: String(limit), search},
             mysqlDatabaseListResponse,
           );
-          const msg = this.unwrapEnvelope<{data: typeof raw.message.data}>(raw);
+          const msg = this.unwrapEnvelope<typeof raw.message>(raw);
           const items = (msg.data ?? []).map((r) => ({
             engine: 'mysql' as DbEngine,
             id: r.id,
@@ -766,16 +775,17 @@ export class AaPanelClient {
             addtime: r.addtime,
             backupCount: r.backup_count ?? 0,
           }));
-          return {items, failures: []};
+          const cut = describePage('mysql', items.length, limit, msg.page);
+          return {items, failures: [], truncations: cut ? [cut] : []};
         } catch (err) {
-          return {items: [], failures: [describeSourceFailure('mysql', err)]};
+          return {items: [], failures: [describeSourceFailure('mysql', err)], truncations: []};
         }
       })(),
       (async (): Promise<PartialResult<Database>> => {
         try {
           const data = JSON.stringify({p, limit, search, table: 'databases'});
           const raw = await this.post('v2/database/pgsql/get_list', {data}, pgsqlDatabaseListResponse);
-          const msg = this.unwrapEnvelope<{data: typeof raw.message.data}>(raw);
+          const msg = this.unwrapEnvelope<typeof raw.message>(raw);
           const items = (msg.data ?? []).map((r) => ({
             engine: 'pgsql' as DbEngine,
             id: r.id,
@@ -786,9 +796,10 @@ export class AaPanelClient {
             addtime: r.addtime,
             backupCount: r.backup_count ?? 0,
           }));
-          return {items, failures: []};
+          const cut = describePage('pgsql', items.length, limit, msg.page);
+          return {items, failures: [], truncations: cut ? [cut] : []};
         } catch (err) {
-          return {items: [], failures: [describeSourceFailure('pgsql', err)]};
+          return {items: [], failures: [describeSourceFailure('pgsql', err)], truncations: []};
         }
       })(),
     ]);
@@ -796,6 +807,9 @@ export class AaPanelClient {
     return {
       items: [...mysql.items, ...pgsql.items],
       failures: [...mysql.failures, ...pgsql.failures],
+      // Kept per engine rather than summed: "1000 of 1200 databases" hides which
+      // engine to go looking in, and the two are managed through different APIs.
+      truncations: [...mysql.truncations, ...pgsql.truncations],
     };
   }
 
@@ -816,13 +830,14 @@ export class AaPanelClient {
    * (ADR-0003).
    */
   async listSites(params: {p?: number; limit?: number; search?: string} = {}): Promise<PartialResult<Site>> {
+    const limit = params.limit ?? DEFAULT_PAGE_LIMIT;
     try {
       const raw = await this.post(
         'v2/data?action=getData',
         {
           table: 'sites',
           p: String(params.p ?? 1),
-          limit: String(params.limit ?? 1000),
+          limit: String(limit),
           search: params.search ?? '',
           order: '',
           type: '-1',
@@ -830,7 +845,7 @@ export class AaPanelClient {
         },
         siteListResponse,
       );
-      const msg = this.unwrapEnvelope<{data: typeof raw.message.data}>(raw);
+      const msg = this.unwrapEnvelope<typeof raw.message>(raw);
       const items: Site[] = (msg.data ?? []).map((r) => ({
         id: r.id,
         // `rname` is the panel's display name and matches `name` in every
@@ -849,9 +864,10 @@ export class AaPanelClient {
         addtime: r.addtime,
         backupCount: r.backup_count,
       }));
-      return {items, failures: []};
+      const cut = describePage('sites', items.length, limit, msg.page);
+      return {items, failures: [], truncations: cut ? [cut] : []};
     } catch (err) {
-      return {items: [], failures: [describeSourceFailure('sites', err)]};
+      return {items: [], failures: [describeSourceFailure('sites', err)], truncations: []};
     }
   }
 

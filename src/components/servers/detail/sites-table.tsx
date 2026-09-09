@@ -6,6 +6,7 @@ import {RefreshCw, ShieldCheck, ShieldOff} from 'lucide-react';
 import type {SiteListResult} from '@/server/actions/sites';
 import {listSitesAction} from '@/server/actions/sites';
 import {Button} from '@/components/ui/button';
+import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
 import {Badge} from '@/components/ui/badge';
 import {
   Table,
@@ -51,22 +52,18 @@ export function SitesTable({id, initial}: SitesTableProps) {
     </div>
   );
 
-  // A source that did not answer stays visible: a shorter list looks complete,
-  // and then "no sites" reads the same as "the panel refused" (ADR-0003).
-  const partial =
-    result.ok && result.failures.length > 0 ? (
-      <div
-        className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-        role="status"
-      >
-        <p className="font-medium">{t('partialTitle')}</p>
-        <ul className="mt-1 space-y-0.5 text-xs opacity-80">
-          {result.failures.map((f) => (
-            <li key={f.source}>{t('partialLine', {source: f.source, reason: f.message})}</li>
-          ))}
-        </ul>
-      </div>
-    ) : null;
+  // A source that did not answer — or answered with more rows than were read —
+  // stays visible: a shorter list looks complete, and then "no sites" reads the
+  // same as "the panel refused" (ADR-0003).
+  const partial = result.ok ? (
+    <ListIntegrityNotice
+      failures={result.failures}
+      truncations={result.truncations}
+      // The client's source key is 'sites'; the operator's word for it is the
+      // section's own heading, in their language.
+      labelSource={() => t('title')}
+    />
+  ) : null;
 
   if (!result.ok) {
     return (

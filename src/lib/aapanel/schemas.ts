@@ -34,7 +34,23 @@ const rawNodeProject = z.object({
 
 export type RawNodeProjectParsed = z.infer<typeof rawNodeProject>;
 
-export const projectListResponse = envelope(z.object({data: z.array(rawNodeProject)}));
+/**
+ * Every paged list the panel serves carries its own pagination markup in `page`
+ * — HTML built for the panel's interface, from which a row count can usually be
+ * read. It is optional here on purpose: `paging.ts` treats an unreadable count
+ * as unknown and falls back to comparing rows against the requested limit, so a
+ * panel that omits or restyles this field costs precision, never correctness.
+ *
+ * `data`, by contrast, is required, and that difference is the point. An answer
+ * with no rows array is not an empty list — it is a refusal or a shape we do not
+ * understand, and defaulting it to `[]` turns "the panel said no" into "you have
+ * no sites". Requiring it sends such an answer down the error path, where the
+ * operator is told which endpoint and which field (PROJECT_RULES.md §16).
+ */
+const pagedList = <T extends z.ZodType>(row: T) =>
+  z.object({data: z.array(row), page: z.string().default('')});
+
+export const projectListResponse = envelope(pagedList(rawNodeProject));
 
 export const projectInfoResponse = envelope(rawNodeProject);
 
@@ -62,63 +78,51 @@ export const projectLogResponse = envelope(z.object({result: z.string()}));
  * it, and unknown keys are stripped rather than rejected.
  */
 export const siteListResponse = envelope(
-  z.object({
-    data: z
-      .array(
-        z.object({
-          id: z.number(),
-          name: z.string(),
-          rname: z.string().default(''),
-          path: z.string().default(''),
-          status: z.string().default(''),
-          ps: z.string().default(''),
-          addtime: z.string().default(''),
-          php_version: z.string().default(''),
-          project_type: z.string().default(''),
-          ssl: z.union([z.number(), z.string()]).optional(),
-          site_ssl: z.union([z.number(), z.string()]).optional(),
-          domain: z.number().default(0),
-          backup_count: z.number().default(0),
-        }),
-      )
-      .default([]),
-  }),
+  pagedList(
+    z.object({
+      id: z.number(),
+      name: z.string(),
+      rname: z.string().default(''),
+      path: z.string().default(''),
+      status: z.string().default(''),
+      ps: z.string().default(''),
+      addtime: z.string().default(''),
+      php_version: z.string().default(''),
+      project_type: z.string().default(''),
+      ssl: z.union([z.number(), z.string()]).optional(),
+      site_ssl: z.union([z.number(), z.string()]).optional(),
+      domain: z.number().default(0),
+      backup_count: z.number().default(0),
+    }),
+  ),
 );
 
 /** MySQL list row — `accept` carries the access scope. */
 export const mysqlDatabaseListResponse = envelope(
-  z.object({
-    data: z
-      .array(
-        z.object({
-          id: z.number(),
-          name: z.string(),
-          username: z.string().default(''),
-          accept: z.string().default(''),
-          ps: z.string().default(''),
-          addtime: z.string().default(''),
-          backup_count: z.number().optional(),
-        }),
-      )
-      .default([]),
-  }),
+  pagedList(
+    z.object({
+      id: z.number(),
+      name: z.string(),
+      username: z.string().default(''),
+      accept: z.string().default(''),
+      ps: z.string().default(''),
+      addtime: z.string().default(''),
+      backup_count: z.number().optional(),
+    }),
+  ),
 );
 
 /** PostgreSQL list row — the access scope lives in `listen_ip` instead of `accept`. */
 export const pgsqlDatabaseListResponse = envelope(
-  z.object({
-    data: z
-      .array(
-        z.object({
-          id: z.number(),
-          name: z.string(),
-          username: z.string().default(''),
-          listen_ip: z.string().default(''),
-          ps: z.string().default(''),
-          addtime: z.string().default(''),
-          backup_count: z.number().optional(),
-        }),
-      )
-      .default([]),
-  }),
+  pagedList(
+    z.object({
+      id: z.number(),
+      name: z.string(),
+      username: z.string().default(''),
+      listen_ip: z.string().default(''),
+      ps: z.string().default(''),
+      addtime: z.string().default(''),
+      backup_count: z.number().optional(),
+    }),
+  ),
 );

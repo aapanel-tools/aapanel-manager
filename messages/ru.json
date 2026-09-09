@@ -210,17 +210,20 @@
     "confirmDeleteLabel": "Введите имя базы для подтверждения",
     "created": "База данных создана",
     "deleted": "База данных удалена",
-    "filterEngine": "Фильтр по движку",
-    "partialTitle": "Список может быть неполным",
-    "partialLine": "{source} не ответил: {reason}"
+    "filterEngine": "Фильтр по движку"
+  },
+  "listNotice": {
+    "incompleteTitle": "Список неполный",
+    "failureLine": "{source} не ответил: {reason}",
+    "truncatedTitle": "Показан не весь список",
+    "truncatedKnown": "{source}: показано {shown} из {total}",
+    "truncatedUnknown": "{source}: показано {shown}, возможно, есть ещё"
   },
   "sites": {
     "title": "Сайты",
     "refresh": "Обновить",
     "noSites": "На этом сервере нет сайтов.",
     "loadFailed": "Не удалось получить список сайтов",
-    "partialTitle": "Список неполный",
-    "partialLine": "{source}: {reason}",
     "domain": "Домен",
     "type": "Тип",
     "php": "PHP",

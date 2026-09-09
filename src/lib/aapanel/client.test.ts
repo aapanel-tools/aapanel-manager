@@ -336,7 +336,7 @@ describe('AaPanelClient.listProjects', () => {
   it('returns a NodeProject[] with mapped name, status, port, path, cpu, mem', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(projectListResponse) as never);
     const client = new AaPanelClient(cfg);
-    const projects: NodeProject[] = await client.listProjects();
+    const {items: projects}: {items: NodeProject[]} = await client.listProjects();
 
     // Correct count
     expect(projects).toHaveLength(2);
@@ -374,7 +374,7 @@ describe('AaPanelClient.listProjects', () => {
   it('status "running" when run=true, "stopped" when run=false', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(projectListResponse) as never);
     const client = new AaPanelClient(cfg);
-    const projects = await client.listProjects();
+    const {items: projects} = await client.listProjects();
     expect(projects[0].status).toBe('running');
     expect(projects[1].status).toBe('stopped');
   });
@@ -1058,7 +1058,7 @@ describe('AaPanelClient response validation', () => {
       jsonResponse({status: 0, message: {data: [{name: 'app'}]}}) as never,
     );
     const client = new AaPanelClient(cfg);
-    const [project] = await client.listProjects();
+    const [project] = (await client.listProjects()).items;
     expect(project).toMatchObject({name: 'app', status: 'unknown', path: null, port: null});
   });
 
@@ -1105,7 +1105,7 @@ describe('AaPanelClient response size cap', () => {
   it('lets an answer under the cap through unchanged', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
     const client = new AaPanelClient(tiny);
-    expect(await client.listProjects()).toEqual([]);
+    expect((await client.listProjects()).items).toEqual([]);
   });
 });
 
@@ -1226,7 +1226,7 @@ describe('AaPanelClient panel load limit', () => {
     await expect(second).rejects.toMatchObject({kind: 'timeout'});
     await expect(second).rejects.toThrow(/No free request slot/);
     // The holder is unaffected and still gets its answer.
-    await expect(first).resolves.toEqual([]);
+    await expect(first).resolves.toEqual({items: [], failures: [], truncations: []});
     // Exactly one request reached the panel: the queued one never got a slot.
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -1238,8 +1238,8 @@ describe('AaPanelClient panel load limit', () => {
       () => Promise.resolve(jsonResponse({status: 0, message: {data: []}})) as never,
     );
 
-    await expect(client.listProjects()).resolves.toEqual([]);
-    await expect(client.listProjects()).resolves.toEqual([]);
+    await expect(client.listProjects()).resolves.toEqual({items: [], failures: [], truncations: []});
+    await expect(client.listProjects()).resolves.toEqual({items: [], failures: [], truncations: []});
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
@@ -1367,5 +1367,131 @@ describe('AaPanelClient.listSites', () => {
       sslEnabled: false,
       domainCount: 0,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A list never claims to be whole when it is not (Д-16)
+// ---------------------------------------------------------------------------
+
+describe('list truncation reaches the caller', () => {
+  const cfg = {baseUrl: 'https://panel.example.com:8888', apiSk: 'k', tlsMode: 'VERIFY' as const};
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const rows = (n: number, make: (i: number) => unknown) =>
+    Array.from({length: n}, (_, i) => make(i));
+
+  it('reports how much of the site list is missing', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {
+          data: rows(5, (i) => ({...FIXTURE_SITE_ROW, id: i, name: `s${i}.example.com`})),
+          page: "<div><span class='Pcount'>Total 1200</span></div>",
+        },
+      }) as never,
+    );
+    // limit=5 stands in for the production 1000: what matters is that the app
+    // asked for a number of rows and the panel had more.
+    const {items, truncations} = await new AaPanelClient(cfg).listSites({limit: 5});
+
+    expect(items).toHaveLength(5);
+    expect(truncations).toEqual([{source: 'sites', shown: 5, total: 1200}]);
+  });
+
+  it('asserts completeness when the list is whole', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {data: [FIXTURE_SITE_ROW], page: '<div>Total 1</div>'},
+      }) as never,
+    );
+    const {failures, truncations} = await new AaPanelClient(cfg).listSites();
+
+    // Both empty is a statement — "this is all of them" — not an absence.
+    expect(failures).toEqual([]);
+    expect(truncations).toEqual([]);
+  });
+
+  it('names the engine whose database list was cut short', async () => {
+    // MySQL has more than was read; PostgreSQL is complete. Merged into one
+    // list, the notice must still say where to go looking.
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: 0,
+          message: {
+            data: rows(3, (i) => ({
+              id: i,
+              name: `db${i}`,
+              username: 'u',
+              accept: '127.0.0.1',
+              ps: '',
+              addtime: '2026-01-01 00:00:00',
+            })),
+            page: '<div>Total 40</div>',
+          },
+        }) as never,
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: 0,
+          message: {
+            data: [
+              {
+                id: 9,
+                name: 'pg',
+                username: 'u',
+                listen_ip: '127.0.0.1',
+                ps: '',
+                addtime: '2026-01-01 00:00:00',
+              },
+            ],
+            page: '<div>Total 1</div>',
+          },
+        }) as never,
+      );
+    const {truncations} = await new AaPanelClient(cfg).listDatabases({limit: 3});
+
+    expect(truncations).toEqual([{source: 'mysql', shown: 3, total: 40}]);
+  });
+
+  it('warns without a number when the panel sends no readable count', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: rows(2, () => ({name: 'app'}))}}) as never,
+    );
+    const {truncations} = await new AaPanelClient(cfg).listProjects({limit: 2});
+
+    // "There may be more" beats a made-up total: the row count needs no markup.
+    expect(truncations).toEqual([{source: 'projects', shown: 2, total: null}]);
+  });
+
+  it('does not cry wolf on a list that exactly fills the request', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {data: rows(2, () => ({name: 'app'})), page: '<div>Total 2</div>'},
+      }) as never,
+    );
+    const {truncations} = await new AaPanelClient(cfg).listProjects({limit: 2});
+
+    expect(truncations).toEqual([]);
+  });
+
+  it('says nothing about truncation when a source refused outright', async () => {
+    // A refusal is already reported as a failure. Adding "and it may have had
+    // more rows" to a source that returned none would be noise.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: 'denied'}, 200) as never,
+    );
+    const {failures, truncations} = await new AaPanelClient(cfg).listSites();
+
+    expect(failures).toHaveLength(1);
+    expect(truncations).toEqual([]);
   });
 });

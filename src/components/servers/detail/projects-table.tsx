@@ -8,6 +8,7 @@ import type {ProjectsResult} from '@/server/actions/projects';
 import {listNodeProjectsAction, projectControlAction} from '@/server/actions/projects';
 import type {ProjectOperation} from '@/lib/aapanel';
 import {Button} from '@/components/ui/button';
+import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
 import {Badge} from '@/components/ui/badge';
 import {
   Table,
@@ -127,11 +128,20 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   }
 
   const projects = result.projects;
+  // The panel paginates; a list cut short must say so rather than look whole.
+  const partial = (
+    <ListIntegrityNotice
+      failures={[]}
+      truncations={result.truncations}
+      labelSource={() => t('title')}
+    />
+  );
 
   if (projects.length === 0) {
     return (
       <div>
         {header}
+        {partial}
         <p className="text-sm text-muted-foreground">{t('noProjects')}</p>
       </div>
     );
@@ -140,6 +150,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   return (
     <div>
       {header}
+      {partial}
       <Table>
         <TableHeader>
           <TableRow>

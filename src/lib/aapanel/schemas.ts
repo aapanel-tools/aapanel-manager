@@ -97,6 +97,64 @@ export const siteListResponse = envelope(
   ),
 );
 
+// ---------------------------------------------------------------------------
+// Firewall (read-only)
+//
+// Three endpoints, three shapes again. Only the reading side is described here
+// and in the API notes: a wrong port rule locks everyone out of the server,
+// including the panel, so the writing side was never exercised on a live host.
+// ---------------------------------------------------------------------------
+
+/** Whether the firewall is running at all. */
+export const firewallStatusResponse = envelope(
+  z.object({
+    status: z.boolean().default(false),
+    init_status: z.object({status: z.boolean().default(false), msg: z.string().default('')}).optional(),
+  }),
+);
+
+/**
+ * Counts and backend, as the panel's own security page shows them.
+ *
+ * Every field has a default: an older panel that omits one should cost a number
+ * on screen, not the whole summary.
+ */
+export const firewallInfoResponse = envelope(
+  z.object({
+    port: z.number().default(0),
+    ip: z.number().default(0),
+    trans: z.number().default(0),
+    country: z.number().default(0),
+    banned: z.number().default(0),
+    type: z.string().default(''),
+    update_time: z.string().default(''),
+    ping: z.boolean().default(true),
+  }),
+);
+
+/**
+ * Port rules, paged the panel's way.
+ *
+ * Capitalised field names are the panel's, not a style slip. `id` is 0 for the
+ * built-in system ports, so it cannot be used as a React key on its own.
+ */
+export const firewallPortRulesResponse = envelope(
+  pagedList(
+    z.object({
+      Port: z.union([z.string(), z.number()]).default(''),
+      Protocol: z.string().default(''),
+      Family: z.string().default(''),
+      Strategy: z.string().default(''),
+      Chain: z.string().default(''),
+      Address: z.string().default(''),
+      brief: z.string().default(''),
+      domain: z.string().default(''),
+      id: z.number().default(0),
+      addtime: z.string().default(''),
+    }),
+  ),
+);
+
 /** MySQL list row — `accept` carries the access scope. */
 export const mysqlDatabaseListResponse = envelope(
   pagedList(

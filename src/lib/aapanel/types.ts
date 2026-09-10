@@ -369,6 +369,51 @@ export interface CronTask {
   script: string;
 }
 
+/**
+ * One port rule as the panel keeps it.
+ *
+ * Values stay the panel's own words — `accept`/`drop`, `INPUT`/`OUTPUT`, `tcp`
+ * — because a firewall is exactly the place not to paraphrase. A rule this
+ * version has never seen is information about a client's machine, not a
+ * rendering problem.
+ */
+export interface FirewallRule {
+  /** A port or a range, e.g. "8080" or "39000-40000". */
+  port: string;
+  protocol: string;
+  family: string;
+  /** `accept` or `drop`. */
+  strategy: string;
+  /** `INPUT` for inbound, `OUTPUT` for outbound. */
+  chain: string;
+  /** Source scope: `all`, or a CIDR. */
+  address: string;
+  note: string;
+  addtime: string;
+  /** 0 for the built-in system ports, so it does not identify a row on its own. */
+  id: number;
+}
+
+/**
+ * The state of a server's firewall, gathered from two independent calls.
+ *
+ * `enabled` is nullable on purpose, and the difference matters more here than
+ * anywhere else in this app: false means the firewall is off, which is a
+ * finding worth shouting about, while null means the panel would not say — and
+ * presenting the second as the first would raise a false alarm about someone
+ * else's production machine (ADR-0003).
+ */
+export interface FirewallOverview {
+  enabled: boolean | null;
+  /** `ufw`, `firewalld`, `iptables` — whatever the distribution runs. */
+  backend: string | null;
+  /** Whether the host answers ping. */
+  ping: boolean | null;
+  counts: {port: number; ip: number; trans: number; country: number; banned: number} | null;
+  updatedAt: string | null;
+  failures: SourceFailure[];
+}
+
 export interface DbCreateInput {
   engine: DbEngine;
   name: string;

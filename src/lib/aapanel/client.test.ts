@@ -1987,6 +1987,174 @@ describe('AaPanelClient cron mutations', () => {
 });
 
 // ---------------------------------------------------------------------------
+// AaPanelClient firewall (Ф-10) — reading only
+// ---------------------------------------------------------------------------
+
+/** Real get_firewall_info response from a live v8 panel running ufw. */
+const FIXTURE_FIREWALL_INFO = {
+  port: 24,
+  ip: 0,
+  trans: 0,
+  country: 0,
+  banned: 0,
+  type: 'ufw',
+  update_time: '2026-06-05 16:30:09',
+  ping: true,
+};
+
+/** Real port_rules_list row. Field names are capitalised by the panel, not by us. */
+const FIXTURE_FIREWALL_RULE = {
+  Port: '8080',
+  Protocol: 'tcp',
+  Family: 'ipv4',
+  Strategy: 'accept',
+  Chain: 'INPUT',
+  Address: 'all',
+  id: 6,
+  sid: 0,
+  brief: 'моя заметка',
+  domain: '',
+  status: 0,
+  addtime: '2026-02-27 05:27:05',
+};
+
+describe('AaPanelClient.getFirewallOverview', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('reads the state and the counts from the two calls that carry them', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({status: 0, message: {status: true, init_status: {status: true, msg: 'ok'}}}) as never,
+      )
+      .mockResolvedValueOnce(jsonResponse({status: 0, message: FIXTURE_FIREWALL_INFO}) as never);
+
+    const overview = await new AaPanelClient(cfg).getFirewallOverview();
+
+    expect(overview.failures).toEqual([]);
+    expect(overview.enabled).toBe(true);
+    expect(overview.backend).toBe('ufw');
+    expect(overview.ping).toBe(true);
+    expect(overview.counts).toEqual({port: 24, ip: 0, trans: 0, country: 0, banned: 0});
+    expect(overview.updatedAt).toBe('2026-06-05 16:30:09');
+  });
+
+  it('does not report a firewall as off when the panel would not say', async () => {
+    // The difference this test exists for: `false` is an alarm about a client's
+    // machine, `null` is our own ignorance, and turning the second into the
+    // first raises a false alarm (ADR-0003).
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(jsonResponse({status: 0, message: FIXTURE_FIREWALL_INFO}) as never);
+
+    const overview = await new AaPanelClient(cfg).getFirewallOverview();
+
+    expect(overview.enabled).toBeNull();
+    expect(overview.failures.map((f) => f.source)).toEqual(['firewallStatus']);
+    // The half that did answer is still shown.
+    expect(overview.backend).toBe('ufw');
+  });
+
+  it('keeps the on/off answer when the counts are the half that failed', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({status: 0, message: {status: false}}) as never)
+      .mockRejectedValueOnce(new TypeError('fetch failed'));
+
+    const overview = await new AaPanelClient(cfg).getFirewallOverview();
+
+    expect(overview.enabled).toBe(false);
+    expect(overview.counts).toBeNull();
+    expect(overview.failures.map((f) => f.source)).toEqual(['firewallInfo']);
+  });
+});
+
+describe('AaPanelClient.listFirewallRules', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('maps a real rule into the shape the app talks in', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: [FIXTURE_FIREWALL_RULE]}}) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listFirewallRules();
+
+    expect(failures).toEqual([]);
+    expect(items[0]).toEqual({
+      port: '8080',
+      protocol: 'tcp',
+      family: 'ipv4',
+      strategy: 'accept',
+      chain: 'INPUT',
+      address: 'all',
+      note: 'моя заметка',
+      addtime: '2026-02-27 05:27:05',
+      id: 6,
+    });
+  });
+
+  it('asks for both directions at once', async () => {
+    // A filter that defaults to inbound would answer half of "what is open on
+    // this machine" without saying so.
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    await new AaPanelClient(cfg).listFirewallRules();
+
+    const body = new URLSearchParams(String((fetchMock.mock.calls[0][1] as {body: string}).body));
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v2/firewall/com/port_rules_list');
+    expect(body.get('chain')).toBe('ALL');
+    expect(body.get('query')).toBe('');
+    expect(body.get('row')).toBe('1000');
+  });
+
+  it('carries a search term into the panel’s own query field', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    await new AaPanelClient(cfg).listFirewallRules({search: '8080'});
+
+    const body = new URLSearchParams(String((fetchMock.mock.calls[0][1] as {body: string}).body));
+    expect(body.get('query')).toBe('8080');
+  });
+
+  it('reads a port that arrives as a number, not only as a string', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: [{...FIXTURE_FIREWALL_RULE, Port: 22}]}}) as never,
+    );
+    const {items} = await new AaPanelClient(cfg).listFirewallRules();
+    expect(items[0]!.port).toBe('22');
+  });
+
+  it('says when the list was cut short', async () => {
+    // A short list of open ports that looks whole is a false statement about a
+    // client's exposure (Д-16).
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {
+          data: [FIXTURE_FIREWALL_RULE, FIXTURE_FIREWALL_RULE],
+          page: "<div><span class='Pcount'>Total 24</span></div>",
+        },
+      }) as never,
+    );
+    const {truncations} = await new AaPanelClient(cfg).listFirewallRules({row: 2});
+    expect(truncations).toEqual([{source: 'firewall', shown: 2, total: 24}]);
+  });
+
+  it('reports a refusal as a failure instead of an empty rule set', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: 'Permission denied'}) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listFirewallRules();
+
+    expect(items).toEqual([]);
+    expect(failures[0]).toMatchObject({source: 'firewall', kind: 'panel_error'});
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Server-side search (Ф-14)
 // ---------------------------------------------------------------------------
 

@@ -7,6 +7,9 @@ import {
   cronListResponse,
   cronLogsResponse,
   cronMutationResponse,
+  firewallInfoResponse,
+  firewallPortRulesResponse,
+  firewallStatusResponse,
   mysqlDatabaseListResponse,
   pgsqlDatabaseListResponse,
   projectInfoResponse,
@@ -44,6 +47,8 @@ import {
   type ProjectCreateInput,
   type CronTask,
   type Database,
+  type FirewallOverview,
+  type FirewallRule,
   type Site,
   type SiteDetail,
   type SiteDirectory,
@@ -1186,6 +1191,116 @@ export class AaPanelClient {
       cronMutationResponse,
     );
     this.unwrapEnvelope(raw);
+  }
+
+  // ── Firewall (read-only) ──────────────────────────────────────────────────
+
+  /**
+   * Whether the firewall is on, what runs it, and how much it is holding.
+   *
+   * Two independent calls, and either may fail on its own: the counts are worth
+   * showing without the on/off flag, and the on/off flag is worth showing
+   * without the counts. What is never done is filling a gap with a guess —
+   * `enabled: null` means the panel would not say, which reads differently from
+   * `false`, and only one of those is an alarm (ADR-0003).
+   */
+  async getFirewallOverview(): Promise<FirewallOverview> {
+    const failures: SourceFailure[] = [];
+
+    const [state, info] = await Promise.all([
+      (async (): Promise<{enabled: boolean} | null> => {
+        try {
+          const raw = await this.post('v2/firewall/com/get_status', {}, firewallStatusResponse);
+          const msg = this.unwrapEnvelope<typeof raw.message>(raw);
+          return {enabled: msg.status};
+        } catch (err) {
+          failures.push(describeSourceFailure('firewallStatus', err));
+          return null;
+        }
+      })(),
+
+      (async (): Promise<Omit<FirewallOverview, 'enabled' | 'failures'> | null> => {
+        try {
+          const raw = await this.post('v2/firewall/com/get_firewall_info', {}, firewallInfoResponse);
+          const msg = this.unwrapEnvelope<typeof raw.message>(raw);
+          // Mapped here rather than below, so the panel's field names stop at
+          // the edge of the module that knows them.
+          return {
+            backend: msg.type,
+            ping: msg.ping,
+            counts: {
+              port: msg.port,
+              ip: msg.ip,
+              trans: msg.trans,
+              country: msg.country,
+              banned: msg.banned,
+            },
+            updatedAt: msg.update_time,
+          };
+        } catch (err) {
+          failures.push(describeSourceFailure('firewallInfo', err));
+          return null;
+        }
+      })(),
+    ]);
+
+    return {
+      enabled: state ? state.enabled : null,
+      backend: info?.backend ?? null,
+      ping: info?.ping ?? null,
+      counts: info?.counts ?? null,
+      updatedAt: info?.updatedAt ?? null,
+      failures,
+    };
+  }
+
+  /**
+   * The port rules, optionally narrowed by the panel's own `query`.
+   *
+   * `chain` is left at ALL: inbound and outbound are shown together with the
+   * direction as a column, because a fleet operator asking "what is open on
+   * this machine" wants both, and a filter that defaults to one of them answers
+   * half the question quietly.
+   *
+   * The panel calls its page size `row` rather than `limit`; it is set high for
+   * the same reason every other list here is — one request for the whole set
+   * costs a stranger's panel less than ten requests for parts of it — and
+   * describePage() reports honestly when the answer still did not fit.
+   */
+  async listFirewallRules(
+    params: {p?: number; row?: number; search?: string} = {},
+  ): Promise<PartialResult<FirewallRule>> {
+    const row = params.row ?? DEFAULT_PAGE_LIMIT;
+    try {
+      const raw = await this.post(
+        'v2/firewall/com/port_rules_list',
+        {
+          chain: 'ALL',
+          query: normalizeSearch(params.search),
+          p: String(params.p ?? 1),
+          row: String(row),
+        },
+        firewallPortRulesResponse,
+      );
+      const msg = this.unwrapEnvelope<typeof raw.message>(raw);
+      const items: FirewallRule[] = (msg.data ?? []).map((r) => ({
+        // A port arrives as a string ("8080", "39000-40000") on the panel this
+        // was captured from, but a bare number is cheap to allow for.
+        port: String(r.Port),
+        protocol: r.Protocol,
+        family: r.Family,
+        strategy: r.Strategy,
+        chain: r.Chain,
+        address: r.Address,
+        note: r.brief,
+        addtime: r.addtime,
+        id: r.id,
+      }));
+      const cut = describePage('firewall', items.length, row, msg.page);
+      return {items, failures: [], truncations: cut ? [cut] : []};
+    } catch (err) {
+      return {items: [], failures: [describeSourceFailure('firewall', err)], truncations: []};
+    }
   }
 
   /**

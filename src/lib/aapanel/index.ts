@@ -90,6 +90,8 @@ export type {
   ProjectCreateInput,
   CronTask,
   Database,
+  FirewallOverview,
+  FirewallRule,
   Site,
   SiteDetail,
   SiteDomain,

@@ -124,6 +124,8 @@
     "refresh": "Обновить",
     "loadFailed": "Не удалось загрузить проекты",
     "noProjects": "Проектов не найдено",
+    "searchPlaceholder": "Поиск по названию",
+    "noMatches": "По запросу «{query}» ничего не найдено",
     "name": "Название",
     "status": "Статус",
     "port": "Порт",
@@ -206,11 +208,17 @@
     "create": "Создать",
     "refresh": "Обновить",
     "noDatabases": "Баз данных не найдено",
+    "searchPlaceholder": "Поиск по имени базы",
+    "noMatches": "По запросу «{query}» ничего не найдено",
+    "noneForEngine": "В движке {engine} ничего нет",
     "loadFailed": "Не удалось загрузить базы данных",
     "confirmDeleteLabel": "Введите имя базы для подтверждения",
     "created": "База данных создана",
     "deleted": "База данных удалена",
     "filterEngine": "Фильтр по движку"
+  },
+  "listSearch": {
+    "clear": "Очистить поиск"
   },
   "listNotice": {
     "incompleteTitle": "Список неполный",
@@ -223,6 +231,8 @@
     "title": "Сайты",
     "refresh": "Обновить",
     "noSites": "На этом сервере нет сайтов.",
+    "searchPlaceholder": "Поиск по домену",
+    "noMatches": "По запросу «{query}» ничего не найдено",
     "loadFailed": "Не удалось получить список сайтов",
     "domain": "Домен",
     "type": "Тип",

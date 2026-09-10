@@ -1,6 +1,6 @@
 'use client';
 
-import {useCallback, useEffect, useRef, useState, useTransition} from 'react';
+import {useEffect, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {toast} from 'sonner';
 import {FileText, Play, Square, RotateCcw, RefreshCw, Pencil, Trash2, PlusCircle} from 'lucide-react';
@@ -9,6 +9,8 @@ import {listNodeProjectsAction, projectControlAction} from '@/server/actions/pro
 import type {ProjectOperation} from '@/lib/aapanel';
 import {Button} from '@/components/ui/button';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
+import {ListSearch} from '@/components/servers/detail/list-search';
+import {useSearchableList} from '@/components/servers/detail/use-searchable-list';
 import {Badge} from '@/components/ui/badge';
 import {
   Table,
@@ -38,52 +40,37 @@ const PROJECTS_POLL_INTERVAL_MS = 12_000;
 
 export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   const t = useTranslations('projects');
-  const [result, setResult] = useState<ProjectsResult>(initial);
-  const [pending, startTransition] = useTransition();
+  // Manual refresh, the post-operation refresh and the background poll all go
+  // through one place, which is also what keeps a slow answer from painting
+  // over a newer one.
+  const {result, search, setSearch, applied, pending, reload, reloadIfIdle} =
+    useSearchableList<ProjectsResult>(initial, (term) => listNodeProjectsAction(id, term));
 
-  // Shared by manual refresh, post-operation refresh, and the background poll.
-  // A request token ensures only the latest fetch's result is applied.
-  const inFlightRef = useRef(false);
-  const reqIdRef = useRef(0);
-  const mountedRef = useRef(true);
-
-  const load = useCallback(async () => {
-    const reqId = (reqIdRef.current += 1);
-    inFlightRef.current = true;
-    try {
-      const res = await listNodeProjectsAction(id);
-      if (mountedRef.current && reqId === reqIdRef.current) setResult(res);
-    } finally {
-      inFlightRef.current = false;
-    }
-  }, [id]);
+  // Deliberately separate from the list's own pending flag. Starting or
+  // stopping a project must grey out that row's buttons; a poll landing every
+  // few seconds must not, or the controls flicker out from under the cursor.
+  const [opPending, startTransition] = useTransition();
 
   // Light auto-refresh so status changes appear without a manual click; pauses
-  // when the tab is hidden and never starts a poll while a fetch is in flight.
+  // when the tab is hidden, skips a tick while a request is already out, and
+  // keeps whatever search is running rather than snapping back to the whole
+  // list under the operator.
   useEffect(() => {
-    mountedRef.current = true;
     const tick = () => {
-      if (document.visibilityState === 'visible' && !inFlightRef.current) void load();
+      if (document.visibilityState === 'visible') reloadIfIdle();
     };
     const intervalId = setInterval(tick, PROJECTS_POLL_INTERVAL_MS);
-    return () => {
-      mountedRef.current = false;
-      clearInterval(intervalId);
-    };
-  }, [load]);
+    return () => clearInterval(intervalId);
+  }, [reloadIfIdle]);
 
-  function refetch() {
-    startTransition(async () => {
-      await load();
-    });
-  }
+  const refetch = () => void reload();
 
   function runOp(name: string, op: ProjectOperation) {
     startTransition(async () => {
       const res = await projectControlAction(id, name, op);
       if (res.ok) {
         toast.success(t(OP_TOAST_KEY[op]));
-        await load();
+        await reload();
       } else {
         toast.error(res.message);
       }
@@ -94,6 +81,12 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
     <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
       <h2 className="text-base font-semibold">{t('title')}</h2>
       <div className="flex items-center gap-2">
+        <ListSearch
+          value={search}
+          onChange={setSearch}
+          placeholder={t('searchPlaceholder')}
+          busy={pending}
+        />
         <Button variant="outline" size="sm" disabled={pending} onClick={refetch}>
           <RefreshCw className="mr-1" />
           {t('refresh')}
@@ -102,7 +95,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
           <ProjectFormDialog
             mode="create"
             serverId={id}
-            onDone={() => void load()}
+            onDone={() => void reload()}
             trigger={
               <Button size="sm">
                 <PlusCircle className="mr-1 h-3.5 w-3.5" />
@@ -142,7 +135,9 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
       <div>
         {header}
         {partial}
-        <p className="text-sm text-muted-foreground">{t('noProjects')}</p>
+        <p className="text-sm text-muted-foreground">
+          {applied ? t('noMatches', {query: applied}) : t('noProjects')}
+        </p>
       </div>
     );
   }
@@ -205,7 +200,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
                         variant="ghost"
                         size="sm"
                         title={t('start')}
-                        disabled={pending || p.status === 'running'}
+                        disabled={opPending || p.status === 'running'}
                         onClick={() => runOp(p.name, 'start')}
                       >
                         <Play />
@@ -215,7 +210,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
                         variant="ghost"
                         size="sm"
                         title={t('stop')}
-                        disabled={pending || p.status === 'stopped'}
+                        disabled={opPending || p.status === 'stopped'}
                         onClick={() => runOp(p.name, 'stop')}
                       >
                         <Square />
@@ -225,7 +220,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
                         variant="ghost"
                         size="sm"
                         title={t('restart')}
-                        disabled={pending}
+                        disabled={opPending}
                         onClick={() => runOp(p.name, 'restart')}
                       >
                         <RotateCcw />
@@ -235,7 +230,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
                         mode="edit"
                         serverId={id}
                         projectName={p.name}
-                        onDone={() => void load()}
+                        onDone={() => void reload()}
                         trigger={
                           <Button variant="ghost" size="sm" title={t('edit')}>
                             <Pencil />
@@ -246,7 +241,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
                       <ProjectDeleteDialog
                         serverId={id}
                         projectName={p.name}
-                        onDone={() => void load()}
+                        onDone={() => void reload()}
                         trigger={
                           <Button variant="ghost" size="sm" title={t('delete')}>
                             <Trash2 />

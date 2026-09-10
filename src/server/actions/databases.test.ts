@@ -101,6 +101,25 @@ describe('listDatabasesAction', () => {
     }
   });
 
+  it('carries a search term through to the panel', async () => {
+    // Ф-14. Both engines sit behind this one client call, so a term reaching
+    // it reaches both; that the two shapes of request each carry it is proven
+    // against the client itself.
+    let seen: unknown = 'never called';
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          listDatabases: async (params: unknown) => {
+            seen = params;
+            return {items: [], failures: [], truncations: []};
+          },
+        }) as never,
+    );
+
+    await listDatabasesAction(serverId, 'wp_main');
+    expect(seen).toMatchObject({search: 'wp_main'});
+  });
+
   // The point of ADR-0003: an engine that did not answer reaches the interface,
   // instead of the list quietly looking complete.
   it('passes a partial result through with its failures', async () => {

@@ -198,6 +198,25 @@ describe('listNodeProjectsAction', () => {
       expect(res.projects[0]!.status).toBe('running');
     }
   });
+
+  it('carries a search term through to the panel', async () => {
+    // Ф-14: the action is the browser's only route to the panel's own search.
+    // A term that stops here leaves a box that looks like it works over a list
+    // that ignores it.
+    let seen: unknown = 'never called';
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          listProjects: async (params: unknown) => {
+            seen = params;
+            return {items: [], failures: [], truncations: []};
+          },
+        }) as never,
+    );
+
+    await listNodeProjectsAction(serverId, 'api');
+    expect(seen).toMatchObject({search: 'api'});
+  });
 });
 
 describe('projectControlAction', () => {

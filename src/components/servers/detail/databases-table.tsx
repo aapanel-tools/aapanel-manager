@@ -1,6 +1,6 @@
 'use client';
 
-import {useState, useTransition} from 'react';
+import {useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {RefreshCw, Trash2, PlusCircle} from 'lucide-react';
 import type {DbListResult} from '@/server/actions/databases';
@@ -17,6 +17,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
+import {ListSearch} from '@/components/servers/detail/list-search';
+import {useSearchableList} from '@/components/servers/detail/use-searchable-list';
 import {DatabaseFormDialog} from '@/components/servers/detail/database-form-dialog';
 import {DatabaseDeleteDialog} from '@/components/servers/detail/database-delete-dialog';
 
@@ -30,21 +32,27 @@ type EngineFilter = 'all' | DbEngine;
 
 export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
   const t = useTranslations('databases');
-  const [result, setResult] = useState<DbListResult>(initial);
-  const [pending, startTransition] = useTransition();
+  // Search goes to both engines through the action; the engine filter below
+  // stays in the browser. They answer different questions: one narrows what
+  // the panel looks through, the other hides half of what it returned.
+  const {result, search, setSearch, applied, pending, reload} = useSearchableList<DbListResult>(
+    initial,
+    (term) => listDatabasesAction(id, term),
+  );
   const [engineFilter, setEngineFilter] = useState<EngineFilter>('all');
 
-  function refetch() {
-    startTransition(async () => {
-      const res = await listDatabasesAction(id);
-      setResult(res);
-    });
-  }
+  const refetch = () => void reload();
 
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
       <h2 className="text-base font-semibold">{t('title')}</h2>
       <div className="flex items-center gap-2">
+        <ListSearch
+          value={search}
+          onChange={setSearch}
+          placeholder={t('searchPlaceholder')}
+          busy={pending}
+        />
         <select
           value={engineFilter}
           onChange={(e) => setEngineFilter(e.target.value as EngineFilter)}
@@ -103,6 +111,22 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
     );
   }
 
+  /**
+   * Why the table is empty — three different statements, not interchangeable.
+   *
+   * Rows exist but none survived the engine filter: that is about the filter,
+   * and saying "no databases found" would send an operator looking for a
+   * problem on the server. A search is running: that is about the term, and it
+   * names the one the rows were fetched with rather than the one being typed.
+   * Neither: the server really has none.
+   */
+  const emptyReason = (): string => {
+    if (result.ok && result.databases.length > 0 && engineFilter !== 'all') {
+      return t('noneForEngine', {engine: t(engineFilter)});
+    }
+    return applied ? t('noMatches', {query: applied}) : t('noDatabases');
+  };
+
   const filtered: Database[] =
     engineFilter === 'all'
       ? result.databases
@@ -114,9 +138,11 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
         {header}
         {partial}
         {/* Same reasoning as the sites table: with an engine still owing an
-            answer, "no databases" states as fact what the app does not know. */}
-        {result.ok && result.failures.length === 0 && (
-          <p className="text-sm text-muted-foreground">{t('noDatabases')}</p>
+            answer, "no databases" states as fact what the app does not know.
+            And with a search running, the honest sentence is about the term,
+            not about the server. */}
+        {result.failures.length === 0 && (
+          <p className="text-sm text-muted-foreground">{emptyReason()}</p>
         )}
       </div>
     );

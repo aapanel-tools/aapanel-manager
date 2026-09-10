@@ -1683,3 +1683,70 @@ describe('AaPanelClient.getSiteLogs', () => {
     expect(body).toContain('siteName=site.example.com');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Server-side search (Ф-14)
+// ---------------------------------------------------------------------------
+
+describe('list search reaches the panel', () => {
+  const cfg = {baseUrl: 'https://panel.example.com:8888', apiSk: 'k', tlsMode: 'VERIFY' as const};
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  /** The form body of one call, parsed the way the panel would parse it. */
+  const bodyOf = (call: number) =>
+    new URLSearchParams(String((fetchMock.mock.calls[call][1] as {body: string}).body));
+
+  it('narrows the site list on the panel rather than in the browser', async () => {
+    // The whole point of Ф-14: the row that needs finding may be one of the
+    // ones past the row limit, and no amount of filtering here would reach it.
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    await new AaPanelClient(cfg).listSites({search: 'shop.example.com'});
+
+    expect(bodyOf(0).get('search')).toBe('shop.example.com');
+  });
+
+  it('asks both database engines, not just the first', async () => {
+    // MySQL and PostgreSQL are two lists shown as one. A search that reached
+    // only one of them would quietly answer half the question.
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never)
+      .mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    await new AaPanelClient(cfg).listDatabases({search: 'wp_main'});
+
+    expect(bodyOf(0).get('search')).toBe('wp_main');
+    // PostgreSQL takes its parameters as a JSON `data` field, MySQL as flat
+    // form fields — the same term has to survive both shapes.
+    expect(JSON.parse(String(bodyOf(1).get('data')))).toMatchObject({search: 'wp_main'});
+  });
+
+  it('carries the term into the JSON body the project list uses', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    await new AaPanelClient(cfg).listProjects({search: 'api'});
+
+    expect(JSON.parse(String(bodyOf(0).get('data')))).toMatchObject({search: 'api'});
+  });
+
+  it('sends an empty term when nothing is being searched for', async () => {
+    // Not "omits the field": every one of these endpoints is documented as
+    // receiving `search=` on an ordinary list request.
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    await new AaPanelClient(cfg).listSites();
+
+    expect(bodyOf(0).get('search')).toBe('');
+  });
+
+  it('cleans the term inside the client, not at each caller', async () => {
+    // The boundary is here so that every route to a panel goes through it,
+    // including callers written later. A newline would otherwise reach the
+    // panel's own log as a line of its own.
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    await new AaPanelClient(cfg).listSites({search: '  site\nadmin logged in  '});
+
+    expect(bodyOf(0).get('search')).toBe('site admin logged in');
+  });
+});

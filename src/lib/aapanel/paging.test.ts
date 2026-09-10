@@ -1,6 +1,12 @@
 import {describe, it, expect} from 'vitest';
 
-import {DEFAULT_PAGE_LIMIT, describePage, readPanelTotal} from './paging';
+import {
+  DEFAULT_PAGE_LIMIT,
+  MAX_SEARCH_LENGTH,
+  describePage,
+  normalizeSearch,
+  readPanelTotal,
+} from './paging';
 
 describe('readPanelTotal', () => {
   it('reads the count out of the markup the panel actually sends', () => {
@@ -69,5 +75,65 @@ describe('describePage', () => {
 
   it('has a default limit high enough that hitting it is news', () => {
     expect(DEFAULT_PAGE_LIMIT).toBeGreaterThanOrEqual(1000);
+  });
+});
+
+describe('normalizeSearch', () => {
+  it('sends nothing at all when nothing was asked for', () => {
+    // Empty is the panel idiom for "no filter": these endpoints already
+    // receive `search=` on every ordinary list request.
+    expect(normalizeSearch('')).toBe('');
+    expect(normalizeSearch(undefined)).toBe('');
+    expect(normalizeSearch(null)).toBe('');
+    expect(normalizeSearch('   ')).toBe('');
+  });
+
+  it('leaves an ordinary term exactly as typed', () => {
+    expect(normalizeSearch('shop.example.com')).toBe('shop.example.com');
+    expect(normalizeSearch('  wp_main  ')).toBe('wp_main');
+    // A non-Latin name is a name, not something to sanitize away.
+    expect(normalizeSearch('магазин.рф')).toBe('магазин.рф');
+  });
+
+  it('strips control characters that could forge a line in the panel log', () => {
+    // The panel writes what it was asked for into its own log. A newline in a
+    // search term is a forged log entry waiting to happen, and no domain,
+    // database or project name contains one.
+    expect(normalizeSearch('site\n2026-01-01 admin logged in')).toBe(
+      'site 2026-01-01 admin logged in',
+    );
+    expect(normalizeSearch('a\r\nb')).toBe('a  b');
+    expect(normalizeSearch('a\u0000b')).toBe('a b');
+    expect(normalizeSearch('a\u007fb')).toBe('a b');
+  });
+
+  it('cuts an over-long term instead of refusing it', () => {
+    const long = 'x'.repeat(MAX_SEARCH_LENGTH + 50);
+    const cut = normalizeSearch(long);
+    expect(cut).toHaveLength(MAX_SEARCH_LENGTH);
+    // Cutting widens the search — a prefix matches everything the full term
+    // would have matched and more — so the error direction is extra rows,
+    // never missing ones.
+    expect(long.startsWith(cut)).toBe(true);
+  });
+
+  it('cuts by character, not by code unit', () => {
+    // Slicing a string of astral characters at a code-unit boundary would send
+    // half a surrogate pair to the panel — a malformed string, not a search.
+    const term = '🌐'.repeat(MAX_SEARCH_LENGTH + 10);
+    const cut = normalizeSearch(term);
+    expect(Array.from(cut)).toHaveLength(MAX_SEARCH_LENGTH);
+    // Stated as an exact value rather than as "no trailing surrogate": the
+    // last code unit of a whole emoji is a low surrogate too, so only the
+    // exact string tells a clean cut from half a character.
+    expect(cut).toBe('🌐'.repeat(MAX_SEARCH_LENGTH));
+  });
+
+  it('refuses anything that is not a string, rather than crashing on it', () => {
+    // The nearest caller is a server action, and a TypeScript annotation is
+    // not a runtime check: whatever a browser sends arrives here as-is.
+    expect(normalizeSearch({} as unknown)).toBe('');
+    expect(normalizeSearch(42 as unknown)).toBe('');
+    expect(normalizeSearch(['a'] as unknown)).toBe('');
   });
 });

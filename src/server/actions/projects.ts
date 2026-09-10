@@ -88,8 +88,15 @@ export async function getServerMetricsAction(serverId: string): Promise<MetricsR
   }
 }
 
-/** Lists Node.js projects on the server. Requires authenticated user (any role). */
-export async function listNodeProjectsAction(serverId: string): Promise<ProjectsResult> {
+/**
+ * Lists Node.js projects on the server, optionally narrowed by a search term.
+ *
+ * Requires authenticated user (any role).
+ */
+export async function listNodeProjectsAction(
+  serverId: string,
+  search?: string,
+): Promise<ProjectsResult> {
   try {
     await requireUser();
   } catch {
@@ -98,7 +105,7 @@ export async function listNodeProjectsAction(serverId: string): Promise<Projects
   try {
     const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
-    const {items, truncations} = await client.listProjects();
+    const {items, truncations} = await client.listProjects({search});
     if (truncations.length > 0) log.warn({serverId, truncations}, 'listNodeProjectsAction truncated');
     return {ok: true, projects: items, truncations};
   } catch (err) {

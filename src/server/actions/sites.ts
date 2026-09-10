@@ -40,13 +40,18 @@ async function loadServerCreds(id: string) {
 // ---------------------------------------------------------------------------
 
 /**
- * Lists the sites on a server. Requires an authenticated user (any role).
+ * Lists the sites on a server, optionally narrowed by a search term.
+ *
+ * Requires an authenticated user (any role).
  *
  * Reading only, and no audit entry: the journal records what changed on someone
  * else's production machine, and looking at a list changes nothing. Writing a
  * line per page view would bury the entries that matter.
  */
-export async function listSitesAction(serverId: string): Promise<SiteListResult> {
+export async function listSitesAction(
+  serverId: string,
+  search?: string,
+): Promise<SiteListResult> {
   try {
     await requireUser();
   } catch {
@@ -55,7 +60,11 @@ export async function listSitesAction(serverId: string): Promise<SiteListResult>
   try {
     const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
-    const {items, failures, truncations} = await client.listSites();
+    // The term goes to the panel rather than filtering what came back: the
+    // rows a search is meant to find may be the ones beyond the row limit, and
+    // filtering here would search inside the same page it already showed.
+    // Length and shape are settled in the client (normalizeSearch).
+    const {items, failures, truncations} = await client.listSites({search});
     // A partial answer is reported, never smoothed over: a shorter list that
     // looks complete is how an operator concludes a site was deleted (ADR-0003).
     if (failures.length > 0) log.warn({serverId, failures}, 'listSitesAction partial result');

@@ -39,8 +39,18 @@ async function loadServerCreds(id: string) {
 // Actions
 // ---------------------------------------------------------------------------
 
-/** Lists databases on the server. Requires authenticated user (any role). */
-export async function listDatabasesAction(serverId: string): Promise<DbListResult> {
+/**
+ * Lists databases on the server, optionally narrowed by a search term.
+ *
+ * The term goes to both engines: they are two lists shown as one, and a search
+ * that reached only MySQL would quietly answer half the question.
+ *
+ * Requires authenticated user (any role).
+ */
+export async function listDatabasesAction(
+  serverId: string,
+  search?: string,
+): Promise<DbListResult> {
   try {
     await requireUser();
   } catch {
@@ -49,7 +59,7 @@ export async function listDatabasesAction(serverId: string): Promise<DbListResul
   try {
     const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
-    const {items, failures, truncations} = await client.listDatabases();
+    const {items, failures, truncations} = await client.listDatabases({search});
     // One engine failing still yields the other's list, but never silently:
     // the caller shows the gap and the log names the server (ADR-0003).
     if (failures.length > 0) log.warn({serverId, failures}, 'listDatabasesAction partial result');

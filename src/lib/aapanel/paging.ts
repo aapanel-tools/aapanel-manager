@@ -57,3 +57,43 @@ export function describePage(
   if (total !== null) return total > shown ? {source, shown, total} : null;
   return shown >= limit ? {source, shown, total: null} : null;
 }
+
+/**
+ * Longest search term forwarded to a panel.
+ *
+ * No site, database or project name comes near this. The cap is not about
+ * those: the term arrives from a browser and is posted to someone else's
+ * production machine, so its length has to be decided here rather than by
+ * whoever is typing.
+ */
+export const MAX_SEARCH_LENGTH = 200;
+
+/**
+ * A search term in the only form a panel should ever be sent.
+ *
+ * Two things happen, both for the same reason — the term is untrusted input on
+ * its way to a production server.
+ *
+ * Control characters become spaces. They cannot occur in a domain, a database
+ * name or a project name, and the panel writes what it was asked for into its
+ * own log: a newline in a search term is a forged log line waiting to happen.
+ *
+ * An over-long term is cut, not refused. Cutting widens the search — a prefix
+ * matches everything the full term would have matched and more — so the failure
+ * direction is extra rows, never missing ones, which is the same direction
+ * describePage() errs in and for the same reason. Cutting by code point rather
+ * than by code unit, so a term ending in an emoji or a surrogate pair does not
+ * arrive as half a character.
+ *
+ * An empty result is the panel's own idiom for "no filter": every one of these
+ * endpoints already receives `search=` when nothing is being searched for.
+ */
+export function normalizeSearch(raw: unknown): string {
+  // `unknown`, not `string`, because the nearest caller is a server action and
+  // a type annotation is not a runtime check: whatever a browser sends arrives
+  // here as-is, and `.replace` on an object would be a crash, not a refusal.
+  if (typeof raw !== 'string' || !raw) return '';
+  const cleaned = raw.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  const points = Array.from(cleaned);
+  return points.length > MAX_SEARCH_LENGTH ? points.slice(0, MAX_SEARCH_LENGTH).join('') : cleaned;
+}

@@ -18,7 +18,7 @@ import {
   type RawNodeProjectParsed,
 } from './schemas';
 import {TlsPinMismatchError, dispatcherFor, formatFingerprint} from './tls';
-import {DEFAULT_PAGE_LIMIT, describePage} from './paging';
+import {DEFAULT_PAGE_LIMIT, describePage, normalizeSearch} from './paging';
 import {
   DEFAULT_MAX_CONCURRENT,
   PanelBusyError,
@@ -321,7 +321,9 @@ export class AaPanelClient {
     const data = JSON.stringify({
       p: params.p ?? 1,
       limit,
-      search: params.search ?? '',
+      // Normalized here rather than at the caller so that every route to a
+      // panel goes through the same door — including callers written later.
+      search: normalizeSearch(params.search),
       re_order: params.re_order ?? '',
     });
     const raw = await this.post('v2/project/nodejs/get_project_list', {data}, projectListResponse);
@@ -764,7 +766,7 @@ export class AaPanelClient {
   ): Promise<PartialResult<Database>> {
     const p = params.p ?? 1;
     const limit = params.limit ?? DEFAULT_PAGE_LIMIT;
-    const search = params.search ?? '';
+    const search = normalizeSearch(params.search);
 
     const [mysql, pgsql] = await Promise.all([
       (async (): Promise<PartialResult<Database>> => {
@@ -848,7 +850,7 @@ export class AaPanelClient {
           table: 'sites',
           p: String(params.p ?? 1),
           limit: String(limit),
-          search: params.search ?? '',
+          search: normalizeSearch(params.search),
           order: '',
           type: '-1',
           re_order: '',

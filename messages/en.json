@@ -124,6 +124,8 @@
     "refresh": "Refresh",
     "loadFailed": "Failed to load projects",
     "noProjects": "No projects found",
+    "searchPlaceholder": "Search by name",
+    "noMatches": "Nothing matched “{query}”",
     "name": "Name",
     "status": "Status",
     "port": "Port",
@@ -206,11 +208,17 @@
     "create": "Create",
     "refresh": "Refresh",
     "noDatabases": "No databases found",
+    "searchPlaceholder": "Search by database name",
+    "noMatches": "Nothing matched “{query}”",
+    "noneForEngine": "Nothing in {engine}",
     "loadFailed": "Failed to load databases",
     "confirmDeleteLabel": "Type the database name to confirm",
     "created": "Database created",
     "deleted": "Database deleted",
     "filterEngine": "Filter by engine"
+  },
+  "listSearch": {
+    "clear": "Clear search"
   },
   "listNotice": {
     "incompleteTitle": "The list is incomplete",
@@ -223,6 +231,8 @@
     "title": "Sites",
     "refresh": "Refresh",
     "noSites": "This server has no sites.",
+    "searchPlaceholder": "Search by domain",
+    "noMatches": "Nothing matched “{query}”",
     "loadFailed": "Could not load the site list",
     "domain": "Domain",
     "type": "Type",

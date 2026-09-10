@@ -1,12 +1,13 @@
 'use client';
 
-import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {RefreshCw, ShieldCheck, ShieldOff} from 'lucide-react';
 import type {SiteListResult} from '@/server/actions/sites';
 import {listSitesAction} from '@/server/actions/sites';
 import {Button} from '@/components/ui/button';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
+import {ListSearch} from '@/components/servers/detail/list-search';
+import {useSearchableList} from '@/components/servers/detail/use-searchable-list';
 import {SiteDetailDialog} from '@/components/servers/detail/site-detail-dialog';
 import {Badge} from '@/components/ui/badge';
 import {
@@ -34,22 +35,28 @@ export interface SitesTableProps {
  */
 export function SitesTable({id, initial}: SitesTableProps) {
   const t = useTranslations('sites');
-  const [result, setResult] = useState<SiteListResult>(initial);
-  const [pending, startTransition] = useTransition();
-
-  function refetch() {
-    startTransition(async () => {
-      setResult(await listSitesAction(id));
-    });
-  }
+  // The term is passed to the panel, not applied to what came back: the site
+  // being looked for may be one of the rows past the row limit (Д-16).
+  const {result, search, setSearch, applied, pending, reload} = useSearchableList<SiteListResult>(
+    initial,
+    (term) => listSitesAction(id, term),
+  );
 
   const header = (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
       <h2 className="text-base font-semibold">{t('title')}</h2>
-      <Button variant="outline" size="sm" disabled={pending} onClick={refetch}>
-        <RefreshCw className="mr-1 h-3.5 w-3.5" />
-        {t('refresh')}
-      </Button>
+      <div className="flex items-center gap-2">
+        <ListSearch
+          value={search}
+          onChange={setSearch}
+          placeholder={t('searchPlaceholder')}
+          busy={pending}
+        />
+        <Button variant="outline" size="sm" disabled={pending} onClick={() => void reload()}>
+          <RefreshCw className="mr-1 h-3.5 w-3.5" />
+          {t('refresh')}
+        </Button>
+      </div>
     </div>
   );
 
@@ -89,9 +96,13 @@ export function SitesTable({id, initial}: SitesTableProps) {
         {/* "No sites" is a claim about the server, and it is only true when
             every source answered. With a failure standing, the same words are
             the silent-empty lie the banner above exists to prevent — so the
-            banner is left to speak alone. */}
+            banner is left to speak alone. With a search running it is not a
+            claim about the server at all, and says so — naming the term the
+            rows were fetched with, not the one still being typed. */}
         {result.failures.length === 0 && (
-          <p className="text-sm text-muted-foreground">{t('noSites')}</p>
+          <p className="text-sm text-muted-foreground">
+            {applied ? t('noMatches', {query: applied}) : t('noSites')}
+          </p>
         )}
       </div>
     );

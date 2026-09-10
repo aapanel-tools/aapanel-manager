@@ -1685,6 +1685,208 @@ describe('AaPanelClient.getSiteLogs', () => {
 });
 
 // ---------------------------------------------------------------------------
+// AaPanelClient.listCronTasks (Ф-4)
+// ---------------------------------------------------------------------------
+
+/** A task exactly as a live v8 panel returns it (see the cron docs). */
+const FIXTURE_CRON_ROW = {
+  id: 1,
+  name: 'mytask',
+  type: 'day',
+  where1: '1',
+  where_hour: 1,
+  where_minute: 30,
+  echo: 'f20d8e16a8cfc62631535790e1225430',
+  status: 1,
+  sType: 'toShell',
+  sName: 'ALL',
+  sBody: 'echo hello',
+  user: 'root',
+  type_zh: 'Per Day',
+  cycle: 'Один раз в день в 1:30',
+  type_id: 0,
+  rname: 'mytask',
+  sort: 0,
+};
+
+describe('AaPanelClient.listCronTasks', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('maps a real panel row into the shape the app talks in', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: [FIXTURE_CRON_ROW]}) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listCronTasks();
+
+    expect(failures).toEqual([]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual({
+      id: 1,
+      name: 'mytask',
+      cycle: 'Один раз в день в 1:30',
+      type: 'day',
+      typeLabel: 'Per Day',
+      interval: '1',
+      hour: 1,
+      minute: 30,
+      kind: 'toShell',
+      target: 'ALL',
+      user: 'root',
+      enabled: true,
+      script: 'echo hello',
+    });
+  });
+
+  it('asks the scheduler, with the three fields its own interface sends', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: []}) as never);
+    await new AaPanelClient(cfg).listCronTasks();
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toBe('https://panel.example:8888/v2/crontab?action=GetCrontab');
+    const body = new URLSearchParams(String((fetchMock.mock.calls[0][1] as {body: string}).body));
+    // All three empty means "every task" — the panel's own idiom for no filter.
+    expect(body.get('search')).toBe('');
+    expect(body.get('type_id')).toBe('');
+    expect(body.get('order_param')).toBe('');
+  });
+
+  it('carries a search term to the panel', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: []}) as never);
+    await new AaPanelClient(cfg).listCronTasks({search: 'backup'});
+
+    const body = new URLSearchParams(String((fetchMock.mock.calls[0][1] as {body: string}).body));
+    expect(body.get('search')).toBe('backup');
+  });
+
+  it('reads a stopped task as stopped, whichever way the flag is typed', async () => {
+    // The scheduler sends 1 and 0 as numbers; the site list sends "1" as a
+    // string for the same kind of flag. A panel that does either must not turn
+    // a running task into a stopped one.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: [
+          {...FIXTURE_CRON_ROW, id: 1, status: 0},
+          {...FIXTURE_CRON_ROW, id: 2, status: '1'},
+          {...FIXTURE_CRON_ROW, id: '3', status: '0'},
+        ],
+      }) as never,
+    );
+    const {items} = await new AaPanelClient(cfg).listCronTasks();
+
+    expect(items.map((t) => [t.id, t.enabled])).toEqual([
+      [1, false],
+      [2, true],
+      [3, false],
+    ]);
+  });
+
+  it('does not read a missing hour as midnight', async () => {
+    // "No hour set" and "runs at 00:00" are different statements about someone
+    // else's production machine, and only one of them is true.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: [{...FIXTURE_CRON_ROW, where_hour: null, where_minute: ''}],
+      }) as never,
+    );
+    const {items} = await new AaPanelClient(cfg).listCronTasks();
+
+    expect(items[0]!.hour).toBeNull();
+    expect(items[0]!.minute).toBeNull();
+  });
+
+  it('claims completeness only in the one way this endpoint allows', async () => {
+    // GetCrontab takes no row limit and reports no pagination, so nothing here
+    // can shorten the list — which is what an empty `truncations` asserts.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: [FIXTURE_CRON_ROW]}) as never,
+    );
+    const {truncations} = await new AaPanelClient(cfg).listCronTasks();
+    expect(truncations).toEqual([]);
+  });
+
+  it('reports a refusal as a failure instead of an empty schedule', async () => {
+    // An empty list reads as "this server has nothing scheduled", and that is
+    // how a backup that stopped running goes unnoticed (ADR-0003).
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: 'Permission denied'}) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listCronTasks();
+
+    expect(items).toEqual([]);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({source: 'cron', kind: 'panel_error'});
+    expect(failures[0]!.message).toContain('Permission denied');
+  });
+
+  it('refuses a row whose id cannot be read rather than dropping it', async () => {
+    // A task with no usable id can never be opened or acted on, and a list
+    // quietly one row short is worse than a named error about a shape we do
+    // not understand.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: [FIXTURE_CRON_ROW, {...FIXTURE_CRON_ROW, id: 'not-a-number'}],
+      }) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listCronTasks();
+
+    expect(items).toEqual([]);
+    expect(failures[0]!.message).toContain('unreadable id');
+  });
+
+  it('turns a differently shaped answer into a named failure, not a crash', async () => {
+    // The scheduler answers with the array itself, not with {data: […]}. A
+    // panel that wrapped it would otherwise be read as an empty schedule.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: [FIXTURE_CRON_ROW]}}) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listCronTasks();
+
+    expect(items).toEqual([]);
+    expect(failures[0]!.message).toContain('v2/crontab');
+  });
+});
+
+describe('AaPanelClient.getCronLogs', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns the output of the last run', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {result: 'hello\n----\n'}}) as never,
+    );
+    const logs = await new AaPanelClient(cfg).getCronLogs(7);
+
+    expect(logs).toBe('hello\n----\n');
+    const body = new URLSearchParams(String((fetchMock.mock.calls[0][1] as {body: string}).body));
+    expect(body.get('id')).toBe('7');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v2/crontab?action=GetLogs');
+  });
+
+  it('treats an empty output as an answer, not a failure', async () => {
+    // A task that has never run, or one whose script prints nothing.
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {result: ''}}) as never);
+    await expect(new AaPanelClient(cfg).getCronLogs(7)).resolves.toBe('');
+  });
+
+  it('reports a panel refusal in the panel’s own wording', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: {result: 'Task does not exist'}}) as never,
+    );
+    await expect(new AaPanelClient(cfg).getCronLogs(999)).rejects.toThrow('Task does not exist');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Server-side search (Ф-14)
 // ---------------------------------------------------------------------------
 

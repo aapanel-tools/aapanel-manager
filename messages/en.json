@@ -218,6 +218,31 @@
     "deleted": "Database deleted",
     "filterEngine": "Filter by engine"
   },
+  "cron": {
+    "title": "Scheduled tasks",
+    "refresh": "Refresh",
+    "searchPlaceholder": "Search tasks",
+    "noTasks": "This server has no scheduled tasks.",
+    "noMatches": "Nothing matched “{query}”",
+    "loadFailed": "Could not load the task list",
+    "name": "Name",
+    "schedule": "Schedule",
+    "kind": "Task kind",
+    "target": "Target",
+    "user": "User",
+    "status": "Status",
+    "enabled": "enabled",
+    "disabled": "stopped",
+    "details": "Details",
+    "untitled": "Untitled",
+    "scheduleFields": "Schedule as the panel stores it",
+    "scriptSection": "Script",
+    "noScript": "This task has no script — it is configured through the panel's own fields.",
+    "logSection": "Last run output",
+    "logIsLastRunOnly": "The panel keeps only the most recent run: a clean output is not proof that the task succeeds every time.",
+    "loading": "Loading…",
+    "logEmpty": "No output — the task has not run yet, or prints nothing."
+  },
   "listSearch": {
     "clear": "Clear search"
   },

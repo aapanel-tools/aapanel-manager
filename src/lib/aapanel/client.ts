@@ -4,6 +4,8 @@ import type {ZodType} from 'zod';
 import {sign} from './signing';
 import {
   batchOperationResponse,
+  cronListResponse,
+  cronLogsResponse,
   mysqlDatabaseListResponse,
   pgsqlDatabaseListResponse,
   projectInfoResponse,
@@ -39,6 +41,7 @@ import {
   type NodeProjectConfig,
   type ProjectModifyInput,
   type ProjectCreateInput,
+  type CronTask,
   type Database,
   type Site,
   type SiteDetail,
@@ -1009,6 +1012,94 @@ export class AaPanelClient {
     return this.unwrapEnvelope<typeof raw.message>(raw).result;
   }
 
+  // ── Scheduled tasks (cron) ────────────────────────────────────────────────
+
+  /**
+   * The scheduler's task list.
+   *
+   * Source: the cron documentation — POST /v2/crontab?action=GetCrontab with an
+   * empty body meaning "everything".
+   *
+   * Returns a PartialResult like the other lists, and its `truncations` is
+   * always empty — deliberately, not for want of trying. This endpoint takes no
+   * row limit and returns no pagination markup, so there is nothing on our side
+   * that could cut the list short and nothing in the answer that would report a
+   * cap of the panel's own. An empty array here is therefore the strongest claim
+   * of completeness this endpoint allows anyone to make.
+   *
+   * `search` is forwarded because the panel's own interface sends that field.
+   * Which columns it matches has not been observed the way the site and database
+   * searches were — those panels return the SQL they built, this one does not —
+   * so the term narrows the list without a promise about how.
+   */
+  async listCronTasks(params: {search?: string} = {}): Promise<PartialResult<CronTask>> {
+    try {
+      const raw = await this.post(
+        'v2/crontab?action=GetCrontab',
+        {search: normalizeSearch(params.search), type_id: '', order_param: ''},
+        cronListResponse,
+      );
+      // unwrapEnvelope is skipped for the same reason the domain list skips it:
+      // its default type assumes an object payload, and this payload is the
+      // array itself. A refusal fails the schema first and is reported with the
+      // panel's own wording by send().
+      if (raw.status !== 0) throw new AaPanelError('panel_error', 'Operation failed');
+
+      const items: CronTask[] = raw.message.map((r) => {
+        const id = panelInt(r.id);
+        if (id === null) {
+          // A task whose id cannot be read can never be opened, run or stopped,
+          // and quietly dropping the row would understate the list — which is
+          // the failure mode ADR-0003 exists to prevent. Better one named error
+          // about a shape we do not understand than a list missing a row.
+          throw new AaPanelError(
+            'panel_error',
+            `Panel sent a scheduled task with an unreadable id (${JSON.stringify(r.id)})`,
+          );
+        }
+        return {
+          id,
+          name: r.name,
+          cycle: r.cycle,
+          type: r.type,
+          typeLabel: r.type_zh,
+          interval: String(r.where1),
+          hour: panelInt(r.where_hour),
+          minute: panelInt(r.where_minute),
+          kind: r.sType,
+          target: r.sName,
+          user: r.user,
+          // 1 is running, 0 is stopped, and a stopped task stays in the list —
+          // which is the whole reason the flag is shown rather than filtered on.
+          enabled: panelInt(r.status) === 1,
+          script: r.sBody,
+        };
+      });
+      return {items, failures: [], truncations: []};
+    } catch (err) {
+      return {items: [], failures: [describeSourceFailure('cron', err)], truncations: []};
+    }
+  }
+
+  /**
+   * Output of a scheduled task's last run.
+   *
+   * The panel keeps only the most recent run, so this is a snapshot and not a
+   * history — a task that fails every night looks exactly like one that failed
+   * once. Worth knowing before anyone treats a clean log as proof.
+   *
+   * An empty string is a real answer: a task that has never run yet, or one
+   * whose script prints nothing. Callers must not turn it into an error.
+   */
+  async getCronLogs(id: number): Promise<string> {
+    const raw = await this.post(
+      'v2/crontab?action=GetLogs',
+      {id: String(id)},
+      cronLogsResponse,
+    );
+    return this.unwrapEnvelope<typeof raw.message>(raw).result;
+  }
+
   /**
    * Create a MySQL or PostgreSQL database.
    *
@@ -1170,6 +1261,21 @@ function sslIsSet(value: number | string | undefined): boolean {
   if (value === undefined || value === null || value === '') return false;
   const n = typeof value === 'string' ? Number(value) : value;
   return Number.isFinite(n) && n !== -1;
+}
+
+/**
+ * A number the panel may have sent as a string, or not sent at all.
+ *
+ * Panels are inconsistent about this in ways that are not worth fighting: the
+ * site list sends its status as "1" while the scheduler sends 1, and both are
+ * the same claim. Returns null for anything unreadable rather than 0, because
+ * the two mean different things — "no hour set" is not "midnight".
+ */
+function panelInt(value: number | string | null | undefined): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 function mapProject(p: RawNodeProject): NodeProject {

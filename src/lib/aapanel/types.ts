@@ -325,6 +325,50 @@ export interface SiteDetail {
   failures: SourceFailure[];
 }
 
+/**
+ * One scheduled task as the panel reports it.
+ *
+ * The schedule is carried twice on purpose. `cycle` is the panel's own sentence
+ * for it — the same words an operator sees inside the panel — and it is what
+ * gets shown, because only one combination of the structured fields has ever
+ * been captured from a live panel (`type: 'day'` with an hour and a minute).
+ * What `where1` means for a weekly, monthly or every-N-minutes task is written
+ * down in the API notes but has not been observed, and a schedule rendered from
+ * a guess is a false statement about when something runs on someone else's
+ * production machine. The structured fields are kept beside it so that a
+ * fleet-wide, translated schedule can be built the moment the rest is captured.
+ */
+export interface CronTask {
+  id: number;
+  name: string;
+  /** The panel's own schedule sentence, in the panel's display language. */
+  cycle: string;
+  /** Schedule shape as the panel stores it: `day`, `hour`, `week`, `minute-n`, … */
+  type: string;
+  /** The panel's label for that shape ("Per Day"), also in its own language. */
+  typeLabel: string;
+  /** Interval or day number, whose meaning depends on `type` — hence unparsed. */
+  interval: string;
+  hour: number | null;
+  minute: number | null;
+  /** What kind of task: `toShell`, a site or database backup, a log rotation, … */
+  kind: string;
+  /** What it acts on: `ALL` for a shell script, otherwise a site or database name. */
+  target: string;
+  /** The system user the task runs as — `root` on most panels. */
+  user: string;
+  /** The panel stores this as 1 or 0; a stopped task stays in the list. */
+  enabled: boolean;
+  /**
+   * The shell script itself, for a `toShell` task.
+   *
+   * Shown only inside the task card, never in the list and never in a log line:
+   * backup scripts on a hosting panel routinely carry a database password in
+   * plain text, and a log file is a place secrets must not reach (§16).
+   */
+  script: string;
+}
+
 export interface DbCreateInput {
   engine: DbEngine;
   name: string;

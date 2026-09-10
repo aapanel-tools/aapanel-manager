@@ -88,6 +88,7 @@ export type {
   NodeProjectConfig,
   ProjectModifyInput,
   ProjectCreateInput,
+  CronTask,
   Database,
   Site,
   SiteDetail,

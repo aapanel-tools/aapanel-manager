@@ -208,5 +208,61 @@ export const sitePhpVersionResponse = envelope(
   }),
 );
 
-/** Access log. An empty `result` means no entries, not a failure. */
-export const siteLogsResponse = envelope(z.object({result: z.string().default('')}));
+/**
+ * An answer whose whole payload is one block of text under `result`.
+ *
+ * Shared rather than written twice: a site's access log and a scheduled task's
+ * output are different things to a person and the same shape to a parser, and
+ * two identical schemas drift apart the first time one of them is fixed.
+ *
+ * An empty `result` is a real answer — a site with no traffic, a task that has
+ * never run — and must not be turned into a failure by anyone downstream.
+ */
+const textResult = envelope(z.object({result: z.string().default('')}));
+
+/** Access log of one site. */
+export const siteLogsResponse = textResult;
+
+/** Output of a scheduled task's last run. */
+export const cronLogsResponse = textResult;
+
+/**
+ * The scheduler's task list.
+ *
+ * `message` is the array itself, with no `data` wrapper and no pagination
+ * markup — the third envelope shape this panel uses for a list, after the
+ * wrapped `{data, page}` of sites and databases and the bare array of domains.
+ * So no `pagedList` here: it would look for fields the panel does not send and
+ * reject every answer.
+ *
+ * The request takes no row limit either, which is worth stating rather than
+ * leaving to be inferred: nothing on our side can cut this list short, so
+ * callers report no truncation. Whether the panel caps it internally is
+ * unknown — there is no field in the answer that would say.
+ *
+ * Numbers are accepted as strings throughout. The live sample sends `id` and
+ * `status` as numbers while the site list sends its own status as the string
+ * "1", so a panel that does the same here would otherwise make the whole list
+ * unparseable over a formatting difference.
+ */
+const panelNumber = z.union([z.number(), z.string()]);
+
+export const cronListResponse = envelope(
+  z.array(
+    z.object({
+      id: panelNumber,
+      name: z.string().default(''),
+      type: z.string().default(''),
+      type_zh: z.string().default(''),
+      cycle: z.string().default(''),
+      where1: panelNumber.default(''),
+      where_hour: panelNumber.nullish(),
+      where_minute: panelNumber.nullish(),
+      status: panelNumber.default(0),
+      sType: z.string().default(''),
+      sName: z.string().default(''),
+      sBody: z.string().default(''),
+      user: z.string().default(''),
+    }),
+  ),
+);

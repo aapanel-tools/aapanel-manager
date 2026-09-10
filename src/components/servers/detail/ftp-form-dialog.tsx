@@ -2,6 +2,7 @@
 
 import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
+import {useFieldError} from '@/components/use-field-error';
 import {toast} from 'sonner';
 import {createFtpUserAction} from '@/server/actions/ftp';
 import type {FtpMutResult} from '@/server/actions/ftp';
@@ -41,6 +42,7 @@ export interface FtpFormDialogProps {
  */
 export function FtpFormDialog({id, trigger, onDone}: FtpFormDialogProps) {
   const t = useTranslations('ftp');
+  const fieldError = useFieldError();
   const actionError = useActionError();
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<FtpMutResult>(INITIAL);
@@ -68,7 +70,9 @@ export function FtpFormDialog({id, trigger, onDone}: FtpFormDialogProps) {
   }
 
   const fieldErr = (name: string): string | undefined =>
-    !result.ok && result.fieldErrors ? result.fieldErrors[name]?.[0] : undefined;
+    // The schema names the problem; the sentence is chosen here, where the
+    // locale is known (Д-24).
+    fieldError(!result.ok && result.fieldErrors ? result.fieldErrors[name]?.[0] : undefined);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

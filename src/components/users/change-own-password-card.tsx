@@ -2,6 +2,7 @@
 
 import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
+import {useFieldError} from '@/components/use-field-error';
 import {toast} from 'sonner';
 import {changeOwnPasswordAction, type UserMutResult} from '@/server/actions/users';
 import {KNOWN_USER_ERRORS} from '@/components/users/errors';
@@ -22,6 +23,7 @@ const INITIAL: UserMutResult = {ok: false, error: ''};
 
 export function ChangeOwnPasswordCard() {
   const t = useTranslations('users');
+  const fieldError = useFieldError();
   const [result, setResult] = useState<UserMutResult>(INITIAL);
   const [pending, start] = useTransition();
   const [formKey, setFormKey] = useState(0);
@@ -49,7 +51,9 @@ export function ChangeOwnPasswordCard() {
   }
 
   const fieldErr = (name: string): string | undefined =>
-    !result.ok && result.fieldErrors ? result.fieldErrors[name]?.[0] : undefined;
+    // The schema names the problem; the sentence is chosen here, where the
+    // locale is known (Д-24).
+    fieldError(!result.ok && result.fieldErrors ? result.fieldErrors[name]?.[0] : undefined);
 
   return (
     <Card>

@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {FIELD} from './messages';
 
 // List params come from the URL: this schema must NEVER throw.
 const first = (v: unknown): unknown => (Array.isArray(v) ? v[0] : v);
@@ -47,7 +48,7 @@ export const projectControlJobSchema = z
   })
   .refine((v) => v.confirm === v.project, {
     path: ['confirm'],
-    message: 'Type the project name to confirm',
+    message: FIELD.confirmName,
   });
 
 export type ProjectControlJobInput = z.infer<typeof projectControlJobSchema>;

@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {FIELD} from './messages';
 import {DEPLOYMENT_MODES} from '@/lib/version/types';
 
 /** A GitHub owner/repo segment, or empty (feature simply stays "not configured"). */
@@ -6,7 +7,7 @@ const ghSegment = z
   .string()
   .trim()
   .max(100)
-  .regex(/^[A-Za-z0-9._-]*$/, 'Letters, digits, dot, dash, underscore only')
+  .regex(/^[A-Za-z0-9._-]*$/, FIELD.nameCharset)
   .optional()
   .transform((v) => v ?? '');
 
@@ -25,7 +26,7 @@ const optionalUrl = z
   .max(255)
   .optional()
   .transform((v) => (v && v.length > 0 ? v : null))
-  .refine((v) => v === null || /^https?:\/\/.+/i.test(v), {message: 'Must be an http(s) URL'});
+  .refine((v) => v === null || /^https?:\/\/.+/i.test(v), {message: FIELD.httpUrl});
 
 
 export const updateSettingsSchema = z.object({

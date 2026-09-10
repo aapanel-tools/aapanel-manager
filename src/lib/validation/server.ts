@@ -1,12 +1,13 @@
 import {z} from 'zod';
+import {FIELD} from './messages';
 
 const httpUrl = z
   .string()
   .trim()
-  .url()
+  .url(FIELD.invalidUrl)
   .refine((u) => {
     try {return ['http:', 'https:'].includes(new URL(u).protocol);} catch {return false;}
-  }, 'Must be an http(s) URL');
+  }, FIELD.httpUrl);
 
 const optionalTag = z
   .string()
@@ -15,7 +16,7 @@ const optionalTag = z
   .optional()
   .transform((v) => (v === '' || v == null ? undefined : v));
 
-const apiSk = z.string().trim().min(16, 'api_sk looks too short').max(200);
+const apiSk = z.string().trim().min(16, FIELD.apiSkShort).max(200, FIELD.tooLong);
 
 // How the panel's certificate is trusted (ADR-0002). The form sends the value
 // verbatim; absent or blank means PINNED, because a self-signed certificate is
@@ -31,7 +32,7 @@ const tlsPinSha256 = z
   .string()
   .trim()
   .transform((v) => v.replace(/[^0-9a-fA-F]/g, '').toUpperCase())
-  .refine((v) => v === '' || v.length === 64, 'A SHA-256 fingerprint has 64 hex digits')
+  .refine((v) => v === '' || v.length === 64, FIELD.fingerprintLength)
   .transform((v) => (v === '' ? undefined : v))
   .optional();
 

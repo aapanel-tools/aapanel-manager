@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {FIELD} from './messages';
 
 // ---------------------------------------------------------------------------
 // Field primitives — shared between create and modify.
@@ -11,7 +12,7 @@ const projectName = z
   .trim()
   .min(1)
   .max(64)
-  .regex(/^[A-Za-z0-9._-]+$/, 'Letters, digits, dot, dash, underscore only');
+  .regex(/^[A-Za-z0-9._-]+$/, FIELD.nameCharset);
 
 /** Absolute project directory (must contain package.json on the server). */
 const projectCwd = z
@@ -19,7 +20,7 @@ const projectCwd = z
   .trim()
   .min(1)
   .max(255)
-  .regex(/^\//, 'Must be an absolute path (start with /)');
+  .regex(/^\//, FIELD.absolutePath);
 
 /** Script key from package.json (e.g. "start", "prod:start"). */
 const projectScript = z
@@ -27,10 +28,10 @@ const projectScript = z
   .trim()
   .min(1)
   .max(64)
-  .regex(/^[A-Za-z0-9:._/-]+$/, 'Invalid script key');
+  .regex(/^[A-Za-z0-9:._/-]+$/, FIELD.scriptKey);
 
 /** TCP port. */
-const port = z.coerce.number().int().min(1).max(65535);
+const port = z.coerce.number().int().min(1, FIELD.portRange).max(65535, FIELD.portRange);
 
 /** System user the project runs as. */
 const runUser = z
@@ -38,7 +39,7 @@ const runUser = z
   .trim()
   .min(1)
   .max(32)
-  .regex(/^[A-Za-z0-9._-]+$/, 'Invalid user name');
+  .regex(/^[A-Za-z0-9._-]+$/, FIELD.nameCharset);
 
 /** Node version label, e.g. "v24.13.0". */
 const nodejsVersion = z
@@ -46,7 +47,7 @@ const nodejsVersion = z
   .trim()
   .min(1)
   .max(32)
-  .regex(/^v?[0-9][0-9A-Za-z.+-]*$/, 'Invalid Node.js version');
+  .regex(/^v?[0-9][0-9A-Za-z.+-]*$/, FIELD.nodeVersion);
 
 /** Free-text description / note. */
 const note = z

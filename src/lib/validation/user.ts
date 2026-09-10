@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {FIELD} from './messages';
 
 export const USER_ROLES = ['admin', 'viewer'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
@@ -6,11 +7,13 @@ export type UserRole = (typeof USER_ROLES)[number];
 /** Minimum length for any password the panel sets (account creation / reset / change). */
 export const MIN_PASSWORD_LENGTH = 12;
 
-const email = z.string().trim().toLowerCase().email().max(200);
+const email = z.string().trim().toLowerCase().email(FIELD.invalidEmail).max(200, FIELD.tooLong);
 const password = z
   .string()
-  .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
-  .max(200);
+  // The number lives in the form's hint, where it is visible before anyone
+  // types, rather than in an error that only appears afterwards.
+  .min(MIN_PASSWORD_LENGTH, FIELD.passwordShort)
+  .max(200, FIELD.tooLong);
 const role = z.enum(USER_ROLES);
 
 /** A blank field means "leave the password unchanged" on update. */
@@ -35,7 +38,7 @@ export const changeOwnPasswordSchema = z
     newPassword: password,
   })
   .refine((d) => d.currentPassword !== d.newPassword, {
-    message: 'New password must differ from the current one',
+    message: FIELD.passwordSame,
     path: ['newPassword'],
   });
 

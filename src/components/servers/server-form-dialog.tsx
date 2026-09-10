@@ -1,6 +1,7 @@
 'use client';
 import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
+import {useFieldError} from '@/components/use-field-error';
 import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import type {ServerRow} from '@/lib/servers/query';
@@ -40,6 +41,7 @@ export interface ServerFormDialogProps {
 
 export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps) {
   const t = useTranslations('servers');
+  const fieldError = useFieldError();
   // An action refuses for its own reasons too — wrong role, a form that did
   // not validate — and those arrived as bare English tokens (Д-23).
   const actionError = useActionError();
@@ -77,7 +79,9 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
   }
 
   const fieldErr = (name: string): string | undefined =>
-    !result.ok && result.fieldErrors ? result.fieldErrors[name]?.[0] : undefined;
+    // The schema names the problem; the sentence is chosen here, where the
+    // locale is known (Д-24).
+    fieldError(!result.ok && result.fieldErrors ? result.fieldErrors[name]?.[0] : undefined);
 
   /** Shows what the panel presents right now; pinning stays an explicit choice. */
   function inspectCertificate(form: HTMLFormElement | null) {

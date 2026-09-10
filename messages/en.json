@@ -354,6 +354,26 @@
     "failed": "The action did not go through; details are in the application log",
     "notFound": "Not found — it may have been deleted already"
   },
+  "fieldError": {
+    "required": "Fill in this field",
+    "tooLong": "Too long",
+    "nameCharset": "Latin letters, digits, dot, hyphen and underscore only",
+    "identifierCharset": "Latin letters, digits and underscore only",
+    "scriptKey": "Does not look like a script name from package.json",
+    "nodeVersion": "Does not look like a Node.js version",
+    "absolutePath": "The path must start with “/”",
+    "noParentDir": "The path must not contain “..”",
+    "httpUrl": "The address must start with http:// or https://",
+    "invalidUrl": "This does not look like an address",
+    "invalidEmail": "This does not look like an email address",
+    "passwordShort": "The password is too short",
+    "apiSkShort": "The key is too short — it looks like only part of it was pasted",
+    "fingerprintLength": "A SHA-256 fingerprint is exactly 64 hex digits",
+    "passwordSame": "The new password is the same as the current one",
+    "confirmName": "Type the name exactly as it is written",
+    "portRange": "The port must be between 1 and 65535",
+    "invalid": "Check this field"
+  },
   "listNotice": {
     "incompleteTitle": "The list is incomplete",
     "failureLine": "{source}: {reason}",

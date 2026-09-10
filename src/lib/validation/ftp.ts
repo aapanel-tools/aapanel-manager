@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {FIELD} from './messages';
 
 /**
  * Input schemas for the FTP module.
@@ -21,9 +22,9 @@ const userId = z.coerce.number().int().nonnegative();
 const username = z
   .string()
   .trim()
-  .min(1)
-  .max(32)
-  .regex(/^[A-Za-z0-9._-]+$/, 'Letters, digits, dot, underscore, hyphen only');
+  .min(1, FIELD.required)
+  .max(32, FIELD.tooLong)
+  .regex(/^[A-Za-z0-9._-]+$/, FIELD.nameCharset);
 
 /**
  * The home directory.
@@ -36,10 +37,10 @@ const username = z
 const homePath = z
   .string()
   .trim()
-  .min(1)
-  .max(255)
-  .regex(/^\//, 'Must be an absolute path')
-  .refine((v) => !v.split('/').includes('..'), 'Must not contain ".."');
+  .min(1, FIELD.required)
+  .max(255, FIELD.tooLong)
+  .regex(/^\//, FIELD.absolutePath)
+  .refine((v) => !v.split('/').includes('..'), FIELD.noParentDir);
 
 /**
  * A password on its way to a client's server.
@@ -48,7 +49,7 @@ const homePath = z
  * reachable from the whole internet — and the upper one keeps a paste accident
  * from travelling. It is never logged, never returned, and never stored here.
  */
-const password = z.string().min(8).max(128);
+const password = z.string().min(8, FIELD.passwordShort).max(128, FIELD.tooLong);
 
 export const ftpCreateSchema = z.object({
   username,

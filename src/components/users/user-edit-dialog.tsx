@@ -2,6 +2,7 @@
 
 import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
+import {useFieldError} from '@/components/use-field-error';
 import {toast} from 'sonner';
 import {updateUserAction, type UserMutResult, type UserView} from '@/server/actions/users';
 import {USER_ROLES, type UserRole} from '@/lib/validation/user';
@@ -32,6 +33,7 @@ export interface UserEditDialogProps {
 
 export function UserEditDialog({user, trigger, onDone}: UserEditDialogProps) {
   const t = useTranslations('users');
+  const fieldError = useFieldError();
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState<UserRole>(user.role);
   const [password, setPassword] = useState('');
@@ -74,7 +76,9 @@ export function UserEditDialog({user, trigger, onDone}: UserEditDialogProps) {
   }
 
   const fieldErr = (name: string): string | undefined =>
-    !result.ok && result.fieldErrors ? result.fieldErrors[name]?.[0] : undefined;
+    // The schema names the problem; the sentence is chosen here, where the
+    // locale is known (Д-24).
+    fieldError(!result.ok && result.fieldErrors ? result.fieldErrors[name]?.[0] : undefined);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

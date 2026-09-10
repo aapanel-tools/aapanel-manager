@@ -1,7 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireUser, requireAdmin, AuthError} from '@/lib/auth/guards';
-import {createClientForServer, describeError} from '@/lib/aapanel';
+import {createClientForServer, presentError} from '@/lib/aapanel';
 import {serverLabel} from '@/lib/servers/label';
 import type {
   ServerMetrics,
@@ -84,7 +84,7 @@ export async function getServerMetricsAction(serverId: string): Promise<MetricsR
     return {ok: true, metrics};
   } catch (err) {
     log.error({err, serverId}, 'getServerMetricsAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -110,7 +110,7 @@ export async function listNodeProjectsAction(
     return {ok: true, projects: items, truncations};
   } catch (err) {
     log.error({err, serverId}, 'listNodeProjectsAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -162,7 +162,7 @@ export async function projectControlAction(
       target: projectName,
       result: 'error',
     });
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -180,7 +180,7 @@ export async function getProjectLogsAction(serverId: string, projectName: string
     return {ok: true, logs};
   } catch (err) {
     log.error({err, serverId, projectName}, 'getProjectLogsAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -217,7 +217,7 @@ export async function getProjectEditDataAction(
     return {ok: true, config, runScripts, nodeVersions};
   } catch (err) {
     log.error({err, serverId, projectName}, 'getProjectEditDataAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -235,7 +235,7 @@ export async function getProjectCreateEnvAction(serverId: string): Promise<Proje
     return {ok: true, preEnv};
   } catch (err) {
     log.error({err, serverId}, 'getProjectCreateEnvAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -254,7 +254,7 @@ export async function getRunListAction(serverId: string, projectCwd: string): Pr
     return {ok: true, scripts};
   } catch (err) {
     log.error({err, serverId}, 'getRunListAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -284,7 +284,7 @@ export async function createProjectAction(serverId: string, formData: FormData):
   } catch (err) {
     log.error({err, serverId, name: input.name}, 'createProjectAction failed');
     await recordAudit({userId, serverId, action: 'project.create', target: input.name, result: 'error'});
-    return {ok: false, error: describeError(err, await serverLabel(serverId))};
+    return {ok: false, error: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -314,7 +314,7 @@ export async function modifyProjectAction(serverId: string, formData: FormData):
   } catch (err) {
     log.error({err, serverId, name: input.name}, 'modifyProjectAction failed');
     await recordAudit({userId, serverId, action: 'project.modify', target: input.name, result: 'error'});
-    return {ok: false, error: describeError(err, await serverLabel(serverId))};
+    return {ok: false, error: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -348,7 +348,7 @@ export async function deleteProjectAction(serverId: string, formData: FormData):
     audit = await beginAudit({userId, serverId, action: 'project.delete', target: name});
   } catch (err) {
     log.error({err, serverId, name}, 'deleteProjectAction refused: journal unavailable');
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: await presentError(err)};
   }
 
   try {
@@ -361,7 +361,7 @@ export async function deleteProjectAction(serverId: string, formData: FormData):
   } catch (err) {
     log.error({err, serverId, name}, 'deleteProjectAction failed');
     await audit.finish('error');
-    return {ok: false, error: describeError(err, await serverLabel(serverId))};
+    return {ok: false, error: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -384,6 +384,6 @@ export async function listDirAction(serverId: string, path: string): Promise<Lis
     return {ok: true, path: res.path, dirs: res.dirs};
   } catch (err) {
     log.error({err, serverId, path: target}, 'listDirAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }

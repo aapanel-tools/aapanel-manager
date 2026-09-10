@@ -1,7 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireUser, requireAdmin, AuthError} from '@/lib/auth/guards';
-import {createClientForServer, describeError} from '@/lib/aapanel';
+import {createClientForServer, presentError} from '@/lib/aapanel';
 import {serverLabel} from '@/lib/servers/label';
 import type {Database, SourceFailure, SourceTruncation} from '@/lib/aapanel';
 import {recordAudit, beginAudit, type AuditHandle} from '@/lib/audit';
@@ -67,7 +67,7 @@ export async function listDatabasesAction(
     return {ok: true, databases: items, failures, truncations};
   } catch (err) {
     log.error({err, serverId}, 'listDatabasesAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -104,7 +104,7 @@ export async function createDatabaseAction(serverId: string, formData: FormData)
   } catch (err) {
     log.error({err, serverId, name}, 'createDatabaseAction failed');
     await recordAudit({userId, serverId, action: 'db.create', target: name, result: 'error'});
-    return {ok: false, error: describeError(err, await serverLabel(serverId))};
+    return {ok: false, error: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -147,7 +147,7 @@ export async function deleteDatabaseAction(serverId: string, formData: FormData)
     // Nothing has happened yet and nothing will. An operator loses one retry;
     // the alternative is a deleted database with nobody named against it.
     log.error({err, serverId, name, engine}, 'deleteDatabaseAction refused: journal unavailable');
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: await presentError(err)};
   }
 
   try {
@@ -160,6 +160,6 @@ export async function deleteDatabaseAction(serverId: string, formData: FormData)
   } catch (err) {
     log.error({err, serverId, name, engine}, 'deleteDatabaseAction failed');
     await audit.finish('error');
-    return {ok: false, error: describeError(err, await serverLabel(serverId))};
+    return {ok: false, error: await presentError(err, await serverLabel(serverId))};
   }
 }

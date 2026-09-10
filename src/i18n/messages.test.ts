@@ -37,9 +37,15 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 
 /** Every `namespace.key` a source file asks next-intl for, by plain literal. */
 function usedKeys(source: string): string[] {
-  // `const t = useTranslations('servers')` — several per file is normal.
+  // `const t = useTranslations('servers')` in a client component, and
+  // `const t = await getTranslations('servers')` in a server one. Both were
+  // needed: for a while only the first was matched, so fifteen files — the app
+  // shell, the login page, every list page and the journal — sat outside the
+  // check entirely, which is the same blind spot this test was written to
+  // close, just on the other side of the boundary.
   const scopes = new Map<string, string>();
-  const declaration = /const\s+(\w+)\s*=\s*useTranslations\(\s*['"]([\w.]+)['"]\s*\)/g;
+  const declaration =
+    /const\s+(\w+)\s*=\s*(?:await\s+)?(?:use|get)Translations\(\s*['"]([\w.]+)['"]\s*\)/g;
   for (const m of source.matchAll(declaration)) scopes.set(m[1], m[2]);
   if (scopes.size === 0) return [];
 
@@ -76,7 +82,7 @@ describe('translations', () => {
     // Without this, a change to how translations are imported would turn the
     // whole test green by finding nothing to check.
     const withTranslations = files.filter((f) => usedKeys(readFileSync(f, 'utf8')).length > 0);
-    expect(withTranslations.length).toBeGreaterThan(10);
+    expect(withTranslations.length).toBeGreaterThan(30);
   });
 
   it('has every key the interface asks for, in both languages', () => {

@@ -1,6 +1,6 @@
 'use server';
 import {requireUser} from '@/lib/auth/guards';
-import {createClientForServer, describeError} from '@/lib/aapanel';
+import {createClientForServer, presentError} from '@/lib/aapanel';
 import {serverLabel} from '@/lib/servers/label';
 import type {Site, SiteDetail, SourceFailure, SourceTruncation} from '@/lib/aapanel';
 import {prisma} from '@/lib/db/prisma';
@@ -72,7 +72,7 @@ export async function listSitesAction(
     return {ok: true, sites: items, failures, truncations};
   } catch (err) {
     log.error({err, serverId}, 'listSitesAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -107,7 +107,7 @@ export async function getSiteDetailAction(
     return {ok: true, detail};
   } catch (err) {
     log.error({err, serverId, siteId: site.id}, 'getSiteDetailAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 
@@ -130,6 +130,6 @@ export async function getSiteLogsAction(
     return {ok: true, logs: await client.getSiteLogs(siteName)};
   } catch (err) {
     log.error({err, serverId}, 'getSiteLogsAction failed');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }

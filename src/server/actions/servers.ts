@@ -6,8 +6,8 @@ import {encryptSecret} from '@/lib/crypto/secret-box';
 import {getEncryptionKey} from '@/lib/config/secrets';
 import {
   createClientForServer,
-  describeError,
   formatFingerprint,
+  presentError,
   probeCertificate,
 } from '@/lib/aapanel';
 import {recordAudit, recordAuditIn} from '@/lib/audit';
@@ -83,7 +83,7 @@ export async function createServerAction(_prev: ActionState, formData: FormData)
   } catch (err) {
     log.error({err}, 'createServerAction failed');
     await recordAudit({userId: user.id, action: 'server.create', target: name, result: 'error'});
-    return fieldErrorState(describeError(err));
+    return fieldErrorState(await presentError(err));
   }
 }
 
@@ -130,7 +130,7 @@ export async function updateServerAction(_prev: ActionState, formData: FormData)
   } catch (err) {
     log.error({err, id}, 'updateServerAction failed');
     await recordAudit({userId: user.id, serverId: id, action: 'server.update', target: name, result: 'error'});
-    return fieldErrorState(describeError(err, await serverLabel(id)));
+    return fieldErrorState(await presentError(err, await serverLabel(id)));
   }
 }
 
@@ -175,7 +175,7 @@ export async function deleteServerAction(formData: FormData): Promise<SimpleResu
   } catch (err) {
     log.error({err, id}, 'deleteServerAction failed');
     await recordAudit({userId: user.id, action: 'server.delete', target: id, result: 'error'});
-    return {ok: false, message: describeError(err, await serverLabel(id))};
+    return {ok: false, message: await presentError(err, await serverLabel(id))};
   }
 }
 
@@ -216,7 +216,7 @@ export async function testConnectionAction(formData: FormData): Promise<SimpleRe
       message: `online · cpu ${total.cpu ?? '?'}% · mem ${Math.round(total.mem ?? 0)}%${cert}`,
     };
   } catch (err) {
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: await presentError(err)};
   }
 }
 
@@ -256,7 +256,7 @@ export async function inspectCertificateAction(formData: FormData): Promise<Cert
     };
   } catch (err) {
     log.warn({err, baseUrl}, 'inspectCertificateAction failed');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: await presentError(err)};
   }
 }
 
@@ -277,7 +277,7 @@ export async function refreshServerStatusAction(serverId: string): Promise<Simpl
   } catch (err) {
     await recordAudit({userId: user.id, serverId, action: 'server.refresh', result: 'error'});
     revalidatePath('/servers');
-    return {ok: false, message: describeError(err, await serverLabel(serverId))};
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
 }
 

@@ -33,7 +33,14 @@ export type UserMutResult =
   | {ok: true}
   | {ok: false; error: string; fieldErrors?: Record<string, string[]>};
 
-function describeError(err: unknown): string {
+/**
+ * The message out of an exception, for a user-management failure.
+ *
+ * Named apart from the panel's describeError() on purpose: this one knows
+ * nothing about panels, and two different functions answering to one name in
+ * one project read as one function to whoever comes next.
+ */
+function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unknown error';
 }
 
@@ -71,7 +78,7 @@ export async function listUsersAction(): Promise<UsersListResult> {
     };
   } catch (err) {
     log.error({err}, 'listUsersAction failed');
-    return {ok: false, message: describeError(err)};
+    return {ok: false, message: errorMessage(err)};
   }
 }
 
@@ -98,7 +105,7 @@ export async function createUserAction(formData: FormData): Promise<UserMutResul
     if (isUniqueViolation(err)) return {ok: false, error: 'emailTaken'};
     log.error({err}, 'createUserAction failed');
     await recordAudit({userId: actor.id, action: 'user.create', target: email, result: 'error'});
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: errorMessage(err)};
   }
 }
 
@@ -134,7 +141,7 @@ export async function updateUserAction(formData: FormData): Promise<UserMutResul
   } catch (err) {
     log.error({err, id}, 'updateUserAction failed');
     await recordAudit({userId: actor.id, action: 'user.update', target: id, result: 'error'});
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: errorMessage(err)};
   }
 }
 
@@ -179,7 +186,7 @@ export async function deleteUserAction(formData: FormData): Promise<UserMutResul
   } catch (err) {
     log.error({err, id}, 'deleteUserAction failed');
     await recordAudit({userId: actor.id, action: 'user.delete', target: id, result: 'error'});
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: errorMessage(err)};
   }
 }
 
@@ -208,6 +215,6 @@ export async function changeOwnPasswordAction(formData: FormData): Promise<UserM
   } catch (err) {
     log.error({err}, 'changeOwnPasswordAction failed');
     await recordAudit({userId: actor.id, action: 'user.changePassword', result: 'error'});
-    return {ok: false, error: describeError(err)};
+    return {ok: false, error: errorMessage(err)};
   }
 }

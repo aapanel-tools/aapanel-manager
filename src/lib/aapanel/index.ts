@@ -65,6 +65,8 @@ export async function createClientForServer(server: ServerCreds): Promise<AaPane
 
 export {AaPanelClient} from './client';
 export {AaPanelError, describeError, describeSourceFailure} from './types';
+// The viewer-facing twin of describeError — see present.ts for which is which.
+export {presentError} from './present';
 export {PanelBusyError, panelOrigin} from './rate-limit';
 export {DEFAULT_PAGE_LIMIT, describePage, readPanelTotal} from './paging';
 export {

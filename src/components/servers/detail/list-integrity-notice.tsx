@@ -3,6 +3,44 @@
 import {useTranslations} from 'next-intl';
 import type {SourceFailure, SourceTruncation} from '@/lib/aapanel';
 
+/**
+ * Why a source did not answer, in the operator's language.
+ *
+ * The banner used to print the raw exception — "sites: fetch failed
+ * (ECONNREFUSED)" — which is the technical truth and nearly useless to the
+ * person reading it. The failure already carries its kind, so the frame can be
+ * said properly and the raw text kept beside it as detail, exactly as
+ * presentError() does on the server (Д-21).
+ *
+ * Literal keys rather than tp(f.kind): messages.test.ts skips dynamic keys, and
+ * a template literal here would put these five strings back outside the gate.
+ */
+function failureReason(
+  failure: SourceFailure,
+  tp: (key: string, values?: Record<string, string>) => string,
+): string {
+  const phrase = (() => {
+    switch (failure.kind) {
+      case 'network':
+        return tp('network');
+      case 'timeout':
+        return tp('timeout');
+      case 'auth':
+        return tp('auth');
+      case 'panel_error':
+        return tp('panel_error');
+      case 'tls_pin_mismatch':
+        return tp('tls_pin_mismatch');
+      default:
+        return tp('unknown');
+    }
+  })();
+  // Dropped when it only repeats the phrase, so nobody is shown one sentence twice.
+  return failure.message && failure.message !== phrase
+    ? tp('withDetail', {message: phrase, detail: failure.message})
+    : phrase;
+}
+
 export interface ListIntegrityNoticeProps {
   failures: SourceFailure[];
   truncations: SourceTruncation[];
@@ -40,6 +78,10 @@ export function ListIntegrityNotice({
   failuresTitle,
 }: ListIntegrityNoticeProps) {
   const t = useTranslations('listNotice');
+  // A second namespace on purpose: the phrase for a kind of panel failure is
+  // the same one presentError() uses on the server, and two catalogues of the
+  // same five sentences would drift.
+  const tp = useTranslations('panelError');
 
   if (failures.length === 0 && truncations.length === 0) return null;
 
@@ -54,7 +96,7 @@ export function ListIntegrityNotice({
           <ul className="mt-1 space-y-0.5 text-xs opacity-80">
             {failures.map((f) => (
               <li key={`f-${f.source}`}>
-                {t('failureLine', {source: labelSource(f.source), reason: f.message})}
+                {t('failureLine', {source: labelSource(f.source), reason: failureReason(f, tp)})}
               </li>
             ))}
           </ul>

@@ -221,6 +221,16 @@
   "listSearch": {
     "clear": "Clear search"
   },
+  "panelError": {
+    "network": "panel unreachable",
+    "timeout": "panel did not answer in time",
+    "auth": "panel rejected the API key",
+    "panel_error": "panel refused the request",
+    "tls_pin_mismatch": "panel presented a different TLS certificate",
+    "unknown": "unknown error",
+    "withDetail": "{message} — {detail}",
+    "withServer": "{server}: {message}"
+  },
   "listNotice": {
     "incompleteTitle": "The list is incomplete",
     "failureLine": "{source}: {reason}",

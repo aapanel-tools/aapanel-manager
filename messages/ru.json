@@ -221,6 +221,16 @@
   "listSearch": {
     "clear": "Очистить поиск"
   },
+  "panelError": {
+    "network": "панель недоступна",
+    "timeout": "панель не ответила вовремя",
+    "auth": "панель отклонила ключ API",
+    "panel_error": "панель отказала в запросе",
+    "tls_pin_mismatch": "панель предъявила другой сертификат TLS",
+    "unknown": "неизвестная ошибка",
+    "withDetail": "{message} — {detail}",
+    "withServer": "{server}: {message}"
+  },
   "listNotice": {
     "incompleteTitle": "Список неполный",
     "failureLine": "{source}: {reason}",

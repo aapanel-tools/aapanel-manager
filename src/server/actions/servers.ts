@@ -13,6 +13,7 @@ import {
 import {recordAudit, recordAuditIn} from '@/lib/audit';
 import {serverLabel} from '@/lib/servers/label';
 import {mapLimit} from '@/lib/utils/concurrency';
+import {parseEnv} from '@/env';
 import {prisma} from '@/lib/db/prisma';
 import {log} from '@/log';
 import {
@@ -281,6 +282,15 @@ export async function refreshServerStatusAction(serverId: string): Promise<Simpl
   }
 }
 
+/**
+ * How many servers one click may ask about at once.
+ *
+ * A bound on the caller, not on the panels: the list sends the ids it has on
+ * screen, and a page size is chosen in the browser. Without a cap here, a
+ * crafted request could ask the app to poll the whole fleet in one go (Д-7).
+ */
+const MAX_SERVERS_PER_REFRESH = 100;
+
 /** Live-polls the visible page of servers (bounded concurrency) — the "live visible page" hybrid. */
 export async function refreshVisibleStatusesAction(
   serverIds: string[],
@@ -290,8 +300,16 @@ export async function refreshVisibleStatusesAction(
   } catch {
     return {ok: false, refreshed: 0, failed: serverIds.length};
   }
-  const ids = serverIds.filter((id) => typeof id === 'string' && id.length > 0).slice(0, 100);
-  const results = await mapLimit(ids, 8, (id) => refreshServerStatus(id));
+  const ids = serverIds
+    .filter((id) => typeof id === 'string' && id.length > 0)
+    .slice(0, MAX_SERVERS_PER_REFRESH);
+  // The same setting the background poller runs on, rather than a number of
+  // its own. Both do the identical thing — reach out to many panels at once —
+  // and an operator who lowers WORKER_CONCURRENCY because their network cannot
+  // take it would otherwise find one of the two paths ignoring them (Д-7).
+  const results = await mapLimit(ids, parseEnv().WORKER_CONCURRENCY, (id) =>
+    refreshServerStatus(id),
+  );
   const refreshed = results.filter((r) => r.ok && r.value.ok).length;
   revalidatePath('/servers');
   return {ok: true, refreshed, failed: results.length - refreshed};

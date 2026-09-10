@@ -41,6 +41,29 @@ vi.mock('@/lib/aapanel', async (orig) => {
 // Next cache no-op
 vi.mock('next/cache', () => ({revalidatePath: vi.fn()}));
 
+// The concurrency the refresh path actually runs at — the point of Д-7 is that
+// it comes from the same setting the background poller uses, so the double
+// records what it was handed rather than assuming a number.
+const limiter = vi.hoisted(() => ({lastLimit: -1}));
+vi.mock('@/lib/utils/concurrency', async (orig) => {
+  const actual = await orig<typeof import('@/lib/utils/concurrency')>();
+  return {
+    ...actual,
+    mapLimit: vi.fn(async <T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>) => {
+      limiter.lastLimit = limit;
+      return actual.mapLimit(items, limit, fn);
+    }),
+  };
+});
+const envDouble = vi.hoisted(() => ({workerConcurrency: 16}));
+vi.mock('@/env', async (orig) => {
+  const actual = await orig<typeof import('@/env')>();
+  return {
+    ...actual,
+    parseEnv: vi.fn(() => ({...actual.parseEnv(), WORKER_CONCURRENCY: envDouble.workerConcurrency})),
+  };
+});
+
 import {prisma} from '@/lib/db/prisma';
 import {decryptSecret} from '@/lib/crypto/secret-box';
 import {
@@ -120,6 +143,25 @@ describe('refreshServerStatusAction', () => {
 });
 
 describe('refreshVisibleStatusesAction', () => {
+  it('runs at the concurrency the poller runs at, not one of its own (Д-7)', async () => {
+    // Both paths do the identical thing — reach out to many panels at once —
+    // so an operator who lowers WORKER_CONCURRENCY because their network cannot
+    // take it must not find one of the two ignoring them.
+    const s = await prisma.server.create({data: {name: `Cc-${uniq()}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
+    cleanupServerIds.push(s.id);
+
+    envDouble.workerConcurrency = 3;
+    limiter.lastLimit = -1;
+    await refreshVisibleStatusesAction([s.id]);
+    expect(limiter.lastLimit).toBe(3);
+
+    // Not a constant that happens to equal the default: change it and it follows.
+    envDouble.workerConcurrency = 11;
+    await refreshVisibleStatusesAction([s.id]);
+    expect(limiter.lastLimit).toBe(11);
+    envDouble.workerConcurrency = 16;
+  });
+
   it('counts refreshed and failed separately when given one valid and one bogus id', async () => {
     const s = await prisma.server.create({data: {name: `Vis-${uniq()}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
     cleanupServerIds.push(s.id);

@@ -428,8 +428,10 @@
     "allUsers": "All users",
     "all": "Any result",
     "ok": "Succeeded",
-    "error": "Failed",
-    "unfinished": "no outcome",
+    "error": "Error",
+    "started": "No outcome",
+    "failed": "With failures",
+    "cancelled": "Cancelled",
     "from": "From date",
     "to": "To date"
   },

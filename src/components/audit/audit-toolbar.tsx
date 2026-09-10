@@ -5,7 +5,10 @@ import {useTranslations} from 'next-intl';
 import type {AuditListParams} from '@/lib/validation/audit';
 import {Input} from '@/components/ui/input';
 
-const RESULTS = ['all', 'ok', 'error'] as const;
+// 'started' overlaps 'error' on purpose — see the schema. Labels come from
+// t(r), a dynamic key, which messages.test.ts skips by design: a new option
+// here has to be checked in the browser, not by the gate.
+const RESULTS = ['all', 'ok', 'error', 'started'] as const;
 const SELECT_CLASS = 'h-9 rounded-md border bg-background px-2 text-sm';
 
 export interface AuditToolbarProps {

@@ -25,6 +25,15 @@ describe('auditListParamsSchema', () => {
     expect(p.to).toBeUndefined();
   });
 
+  it('accepts the forensic result filter and still refuses nonsense', () => {
+    // 'started' is a real stored value, so it has to survive the URL; anything
+    // outside the vocabulary must fall back to showing everything rather than
+    // filtering the journal down to nothing.
+    expect(auditListParamsSchema.parse({result: 'started'}).result).toBe('started');
+    expect(auditListParamsSchema.parse({result: 'STARTED'}).result).toBe('all');
+    expect(auditListParamsSchema.parse({result: 'failed'}).result).toBe('all');
+  });
+
   it('clamps the page size to a sane window', () => {
     expect(auditListParamsSchema.parse({pageSize: '1'}).pageSize).toBe(10);
     expect(auditListParamsSchema.parse({pageSize: '10000'}).pageSize).toBe(200);

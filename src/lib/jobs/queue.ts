@@ -205,6 +205,10 @@ async function runClaimedJob(jobId: string, deps: JobRunnerDeps): Promise<void> 
     userId: job.createdById ?? undefined,
     action: `job.${job.kind}`,
     target: `${succeeded}/${job.items.length} servers`,
+    // 'failed' and 'cancelled' are the journal's own words too, not the job
+    // table's leaking through: a batch where some servers refused is a
+    // different claim from an action that came apart, and an operator who
+    // stopped something deliberately caused no fault at all (Д-20).
     result: status === 'succeeded' ? 'ok' : status,
   });
 }

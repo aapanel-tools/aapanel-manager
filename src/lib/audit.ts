@@ -4,9 +4,41 @@ import {prisma} from '@/lib/db/prisma';
 import type {AuditListParams} from '@/lib/validation/audit';
 import {log} from '@/log';
 
+/**
+ * The result an action carries between being recorded and being finished.
+ *
+ * A row still holding this is not junk to be cleaned up — it is the most
+ * important row in the journal: something irreversible was started on someone
+ * else's production machine and nothing ever wrote down how it ended, which
+ * means the process died in the middle of it.
+ */
+export const AUDIT_STARTED = 'started';
+
+/**
+ * Every outcome a journal line may carry.
+ *
+ * Declared in one place because it had drifted: the column is a free string,
+ * and the job queue was writing its own status vocabulary into it while every
+ * action wrote another. The result was two words for failure standing in
+ * neighbouring rows — 131 rows saying `failed` and 54 saying `error` on this
+ * machine alone (Д-20).
+ *
+ * Five values, and each earns its place:
+ *   ok        the action did what it said
+ *   error     the action itself came apart
+ *   failed    a batch finished with some servers unhappy — not the same claim
+ *   cancelled somebody stopped it on purpose; not a fault at all
+ *   started   recorded before an irreversible act, and never resolved (Д-19)
+ */
+export type AuditResult = 'ok' | 'error' | 'failed' | 'cancelled' | typeof AUDIT_STARTED;
+
 export interface AuditInput {
   action: string;
-  result: 'ok' | 'error' | string;
+  /**
+   * Typed rather than `string`: the loose type is what let a second vocabulary
+   * into the column without anything complaining.
+   */
+  result: AuditResult;
   userId?: string;
   serverId?: string;
   target?: string;
@@ -31,15 +63,6 @@ export async function recordAudit(input: AuditInput): Promise<AuditLog | null> {
   }
 }
 
-/**
- * The result an action carries between being recorded and being finished.
- *
- * A row still holding this is not junk to be cleaned up — it is the most
- * important row in the journal: something irreversible was started on someone
- * else's production machine and nothing ever wrote down how it ended, which
- * means the process died in the middle of it.
- */
-export const AUDIT_STARTED = 'started';
 
 /** Raised when an irreversible action could not be journalled, so it did not happen. */
 export class AuditUnavailableError extends Error {
@@ -165,6 +188,11 @@ function buildWhere(p: AuditListParams): Prisma.AuditLogWhereInput {
   // an irreversible action whose outcome was never recorded belongs in front
   // of whoever is looking for problems, not filed under success.
   if (p.result === 'ok') where.result = 'ok';
+  // Deliberately narrower than the others: this is the forensic filter, the one
+  // that answers "did anything irreversible start and never report back". It
+  // sits inside the error bucket rather than beside it, and overlapping is the
+  // point — nobody looking for problems should have to know to ask twice.
+  else if (p.result === AUDIT_STARTED) where.result = AUDIT_STARTED;
   else if (p.result === 'error') where.result = {not: 'ok'};
   if (p.from || p.to) {
     where.createdAt = {...(p.from ? {gte: p.from} : {}), ...(p.to ? {lte: p.to} : {})};

@@ -24,7 +24,12 @@ export const auditListParamsSchema = z.object({
   q: z.preprocess(first, z.string().trim().max(100).optional().catch(undefined)),
   serverId: optionalId,
   userId: optionalId,
-  result: z.preprocess(first, z.enum(['all', 'ok', 'error']).catch('all')),
+  /**
+   * 'error' means "anything that is not a success", which is why it also covers
+   * an unresolved 'started'. That one is listed separately as well: it is the
+   * row worth chasing, and without its own option it can only be found by eye.
+   */
+  result: z.preprocess(first, z.enum(['all', 'ok', 'error', 'started']).catch('all')),
   from: optionalDate,
   to: optionalDate,
 });

@@ -16,6 +16,48 @@ import {
 
 const DEFAULT_PAGE_SIZE = 50;
 
+/**
+ * What an outcome says and how it looks.
+ *
+ * The column used to be printed raw, so an English token out of the database
+ * appeared in the middle of a translated interface, and `cancelled` was painted
+ * red along with everything that is not a plain success — telling an operator
+ * that a batch they stopped on purpose had gone wrong. `started` is its own
+ * state for the reason given where it is defined: the line worth chasing, not
+ * a shade of failure (Д-19, Д-20).
+ *
+ * A word from outside the vocabulary is shown rather than hidden. The journal
+ * outlives the code that wrote it, and a row this version has no name for is
+ * information, not a rendering problem.
+ */
+function resultBadge(
+  result: string,
+  t: (key: string) => string,
+): {variant: 'secondary' | 'destructive'; className?: string; label: string} {
+  switch (result) {
+    case 'ok':
+      return {variant: 'secondary', label: t('ok')};
+    case 'error':
+      return {variant: 'destructive', label: t('error')};
+    case 'failed':
+      return {variant: 'destructive', label: t('failed')};
+    case 'cancelled':
+      return {
+        variant: 'secondary',
+        className: 'border-0 bg-muted text-muted-foreground',
+        label: t('cancelled'),
+      };
+    case AUDIT_STARTED:
+      return {
+        variant: 'secondary',
+        className: 'border-0 bg-amber-500/15 text-amber-700 dark:text-amber-400',
+        label: t('started'),
+      };
+    default:
+      return {variant: 'destructive', label: result};
+  }
+}
+
 /** Rebuilds the URL for another page, carrying every active filter along. */
 function pageHref(params: AuditListParams, page: number): Route {
   const sp = new URLSearchParams();
@@ -61,44 +103,37 @@ export async function AuditTable({rows, total, params}: AuditTableProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-                  {formatTimestamp(r.createdAt)}
-                </TableCell>
-                <TableCell>{r.userEmail ?? <span className="text-muted-foreground">{t('gone')}</span>}</TableCell>
-                <TableCell>
-                  {r.serverName && r.serverId ? (
-                    <Link href={`/servers/${r.serverId}` as Route} className="underline underline-offset-2">
-                      {r.serverName}
-                    </Link>
-                  ) : (
-                    <span className="text-muted-foreground">{r.serverId ? t('gone') : '—'}</span>
-                  )}
-                </TableCell>
-                <TableCell className="font-mono text-xs">{r.action}</TableCell>
-                <TableCell className="max-w-[24rem] truncate" title={r.target ?? undefined}>
-                  {r.target ?? '—'}
-                </TableCell>
-                <TableCell>
-                  {/* Three states, not two. A row still reading `started` was
-                      written before an irreversible action and never resolved:
-                      the process died in the middle of it. That is neither a
-                      success nor a plain failure, and showing it as either
-                      would hide the one line in the journal worth chasing. */}
-                  {r.result === AUDIT_STARTED ? (
-                    <Badge
-                      variant="secondary"
-                      className="border-0 bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                    >
-                      {t('unfinished')}
+            {rows.map((r) => {
+              const outcome = resultBadge(r.result, t);
+              return (
+                <TableRow key={r.id}>
+                  <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                    {formatTimestamp(r.createdAt)}
+                  </TableCell>
+                  <TableCell>
+                    {r.userEmail ?? <span className="text-muted-foreground">{t('gone')}</span>}
+                  </TableCell>
+                  <TableCell>
+                    {r.serverName && r.serverId ? (
+                      <Link href={`/servers/${r.serverId}` as Route} className="underline underline-offset-2">
+                        {r.serverName}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">{r.serverId ? t('gone') : '—'}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{r.action}</TableCell>
+                  <TableCell className="max-w-[24rem] truncate" title={r.target ?? undefined}>
+                    {r.target ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={outcome.variant} className={outcome.className}>
+                      {outcome.label}
                     </Badge>
-                  ) : (
-                    <Badge variant={r.result === 'ok' ? 'secondary' : 'destructive'}>{r.result}</Badge>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

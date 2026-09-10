@@ -358,6 +358,59 @@ describe('modifyProjectAction', () => {
 });
 
 describe('deleteProjectAction', () => {
+  it('journals the intent before the panel is touched (Д-19)', async () => {
+    // Same invariant as db.delete, and a separate call site: the ordering has
+    // to be right in each place it is written, not only in the helper.
+    guard.user.role = 'admin';
+    let resultDuringCall = 'no audit row at all';
+
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          deleteProject: async () => {
+            const row = await prisma.auditLog.findFirst({
+              where: {action: 'project.delete', target: 'app'},
+              orderBy: {createdAt: 'desc'},
+            });
+            resultDuringCall = row ? row.result : 'no audit row at all';
+          },
+        }) as never,
+    );
+
+    const fd = new FormData();
+    fd.set('name', 'app');
+    fd.set('confirm', 'app');
+    const res = await deleteProjectAction(serverId, fd);
+
+    expect(res.ok).toBe(true);
+    expect(resultDuringCall).toBe('started');
+
+    const after = await prisma.auditLog.findFirst({
+      where: {action: 'project.delete', target: 'app'},
+      orderBy: {createdAt: 'desc'},
+    });
+    expect(after?.result).toBe('ok');
+    if (after) cleanupAuditIds.push(after.id);
+  });
+
+  it('refuses the deletion when the journal cannot be written (Д-19)', async () => {
+    guard.user.role = 'admin';
+    const callsBefore = vi.mocked(createClientForServer).mock.calls.length;
+    const realUser = guard.user.id;
+    guard.user.id = 'no-such-user-id';
+    try {
+      const fd = new FormData();
+      fd.set('name', 'app');
+      fd.set('confirm', 'app');
+      const res = await deleteProjectAction(serverId, fd);
+      expect(res.ok).toBe(false);
+    } finally {
+      guard.user.id = realUser;
+    }
+
+    expect(vi.mocked(createClientForServer).mock.calls.length).toBe(callsBefore);
+  });
+
   it('deletes when the typed confirmation matches the name', async () => {
     guard.user.role = 'admin';
     const fd = new FormData();

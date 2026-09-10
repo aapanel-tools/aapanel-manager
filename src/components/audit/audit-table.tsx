@@ -2,7 +2,7 @@ import Link from 'next/link';
 import {formatTimestamp} from '@/lib/format/datetime';
 import type {Route} from 'next';
 import {getTranslations} from 'next-intl/server';
-import type {AuditRow} from '@/lib/audit';
+import {AUDIT_STARTED, type AuditRow} from '@/lib/audit';
 import type {AuditListParams} from '@/lib/validation/audit';
 import {Badge} from '@/components/ui/badge';
 import {
@@ -81,7 +81,21 @@ export async function AuditTable({rows, total, params}: AuditTableProps) {
                   {r.target ?? '—'}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={r.result === 'ok' ? 'secondary' : 'destructive'}>{r.result}</Badge>
+                  {/* Three states, not two. A row still reading `started` was
+                      written before an irreversible action and never resolved:
+                      the process died in the middle of it. That is neither a
+                      success nor a plain failure, and showing it as either
+                      would hide the one line in the journal worth chasing. */}
+                  {r.result === AUDIT_STARTED ? (
+                    <Badge
+                      variant="secondary"
+                      className="border-0 bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                    >
+                      {t('unfinished')}
+                    </Badge>
+                  ) : (
+                    <Badge variant={r.result === 'ok' ? 'secondary' : 'destructive'}>{r.result}</Badge>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

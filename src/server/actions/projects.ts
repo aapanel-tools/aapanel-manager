@@ -12,7 +12,7 @@ import type {
   NodeProjectConfig,
   SourceTruncation,
 } from '@/lib/aapanel';
-import {recordAudit} from '@/lib/audit';
+import {recordAudit, beginAudit, type AuditHandle} from '@/lib/audit';
 import {prisma} from '@/lib/db/prisma';
 import {log} from '@/log';
 import {
@@ -340,16 +340,27 @@ export async function deleteProjectAction(serverId: string, formData: FormData):
   // Guard: user must type the project name to confirm deletion.
   if (confirm !== name) return {ok: false, error: 'confirm'};
 
+  // Journalled before the panel is touched — the same reasoning as db.delete:
+  // this runs on someone else's production machine and cannot be undone, so
+  // it may not happen unless the record already exists (Д-19).
+  let audit: AuditHandle;
+  try {
+    audit = await beginAudit({userId, serverId, action: 'project.delete', target: name});
+  } catch (err) {
+    log.error({err, serverId, name}, 'deleteProjectAction refused: journal unavailable');
+    return {ok: false, error: describeError(err)};
+  }
+
   try {
     const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
     await client.deleteProject(name);
-    await recordAudit({userId, serverId, action: 'project.delete', target: name, result: 'ok'});
+    await audit.finish('ok');
     revalidatePath(`/servers/${serverId}/projects`);
     return {ok: true, message: 'deleted'};
   } catch (err) {
     log.error({err, serverId, name}, 'deleteProjectAction failed');
-    await recordAudit({userId, serverId, action: 'project.delete', target: name, result: 'error'});
+    await audit.finish('error');
     return {ok: false, error: describeError(err, await serverLabel(serverId))};
   }
 }

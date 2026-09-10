@@ -17,24 +17,38 @@ vi.mock('@/lib/auth/guards', async (orig) => {
   };
 });
 
-const db = vi.hoisted(() => ({
-  user: {
+const db = vi.hoisted(() => {
+  const user = {
     findMany: vi.fn(),
     findUnique: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-  },
-}));
+  };
+  const auditLog = {create: vi.fn()};
+  // Deleting an account and journalling it go in one transaction (Д-19), so the
+  // double has to offer one. It runs the callback against the same fake client,
+  // which is what the real $transaction does with a transactional client.
+  const tx = {user, auditLog};
+  return {
+    user,
+    auditLog,
+    $transaction: vi.fn(async (fn: (c: typeof tx) => Promise<unknown>) => fn(tx)),
+  };
+});
 vi.mock('@/lib/db/prisma', () => ({prisma: db}));
 vi.mock('next/cache', () => ({revalidatePath: vi.fn()}));
-vi.mock('@/lib/audit', () => ({recordAudit: vi.fn(async () => null)}));
+vi.mock('@/lib/audit', () => ({
+  recordAudit: vi.fn(async () => null),
+  recordAuditIn: vi.fn(async () => null),
+}));
 vi.mock('@/lib/crypto/password', () => ({
   hashPassword: vi.fn(async (p: string) => `hash:${p}`),
   verifyPassword: vi.fn(async (h: string, p: string) => h === `hash:${p}`),
 }));
 
+import {recordAuditIn} from '@/lib/audit';
 import {
   listUsersAction,
   createUserAction,
@@ -176,6 +190,25 @@ describe('deleteUserAction', () => {
     const res = await deleteUserAction(fd({id: 'v1', confirm: 'V@X.co'})); // case-insensitive confirm
     expect(res).toEqual({ok: true});
     expect(db.user.delete).toHaveBeenCalledWith({where: {id: 'v1'}});
+  });
+
+  it('removes the account and journals it in one transaction (Д-19)', async () => {
+    // An account may not disappear without the journal saying who removed it,
+    // so neither half may happen without the other. Rollback itself is proven
+    // against a real database in servers.test.ts; here the point is that the
+    // two calls go through $transaction rather than one after the other.
+    db.user.findUnique.mockResolvedValueOnce({id: 'v2', email: 'v2@x.co', role: 'viewer'});
+    db.user.count.mockResolvedValueOnce(2);
+    db.user.delete.mockResolvedValueOnce({id: 'v2'});
+
+    const res = await deleteUserAction(fd({id: 'v2', confirm: 'v2@x.co'}));
+
+    expect(res).toEqual({ok: true});
+    expect(db.$transaction).toHaveBeenCalled();
+    expect(recordAuditIn).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({action: 'user.delete', result: 'ok'}),
+    );
   });
 });
 

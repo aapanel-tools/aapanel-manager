@@ -4,7 +4,7 @@ import {requireUser, requireAdmin, AuthError} from '@/lib/auth/guards';
 import {createClientForServer, describeError} from '@/lib/aapanel';
 import {serverLabel} from '@/lib/servers/label';
 import type {Database, SourceFailure, SourceTruncation} from '@/lib/aapanel';
-import {recordAudit} from '@/lib/audit';
+import {recordAudit, beginAudit, type AuditHandle} from '@/lib/audit';
 import {prisma} from '@/lib/db/prisma';
 import {log} from '@/log';
 import {databaseCreateSchema, databaseDeleteSchema} from '@/lib/validation/database';
@@ -136,16 +136,30 @@ export async function deleteDatabaseAction(serverId: string, formData: FormData)
     return {ok: false, error: 'confirm'};
   }
 
+  // Journalled before the panel is touched, not after. This destroys a
+  // client's data on their own machine and cannot be undone, so the ordering
+  // that has a hole in it — act, then write a line that may fail silently —
+  // is not available here (Д-19).
+  let audit: AuditHandle;
+  try {
+    audit = await beginAudit({userId, serverId, action: 'db.delete', target: name});
+  } catch (err) {
+    // Nothing has happened yet and nothing will. An operator loses one retry;
+    // the alternative is a deleted database with nobody named against it.
+    log.error({err, serverId, name, engine}, 'deleteDatabaseAction refused: journal unavailable');
+    return {ok: false, error: describeError(err)};
+  }
+
   try {
     const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
     await client.deleteDatabase(engine, {id, name});
-    await recordAudit({userId, serverId, action: 'db.delete', target: name, result: 'ok'});
+    await audit.finish('ok');
     revalidatePath(`/servers/${serverId}/databases`);
     return {ok: true};
   } catch (err) {
     log.error({err, serverId, name, engine}, 'deleteDatabaseAction failed');
-    await recordAudit({userId, serverId, action: 'db.delete', target: name, result: 'error'});
+    await audit.finish('error');
     return {ok: false, error: describeError(err, await serverLabel(serverId))};
   }
 }

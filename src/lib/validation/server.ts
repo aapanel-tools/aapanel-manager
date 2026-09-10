@@ -55,6 +55,17 @@ export const serverUpdateSchema = z.object({
 });
 
 /** Reading the certificate a panel presents needs nothing but its address. */
+/**
+ * Removing a registration takes the same typed confirmation as removing a
+ * database, and for a harder reason: this row holds the panel's api_sk and its
+ * pinned fingerprint, so losing it by a mis-click costs re-entering a key that
+ * is equal to root on that machine.
+ */
+export const serverDeleteSchema = z.object({
+  id: z.string().min(1),
+  confirm: z.string(),
+});
+
 export const certificateInspectSchema = z.object({baseUrl: httpUrl});
 
 export const testConnectionSchema = z.object({
@@ -81,6 +92,7 @@ export const serverListParamsSchema = z.object({
   dir: z.preprocess(first, z.enum(['asc', 'desc']).catch('asc')),
 });
 
+export type ServerDeleteInput = z.infer<typeof serverDeleteSchema>;
 export type ServerCreateInput = z.infer<typeof serverCreateSchema>;
 export type ServerUpdateInput = z.infer<typeof serverUpdateSchema>;
 export type ServerListParams = z.infer<typeof serverListParamsSchema>;

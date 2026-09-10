@@ -12,13 +12,121 @@ export interface AuditInput {
   target?: string;
 }
 
-/** Best-effort audit write. Returns the row, or null if persistence failed. */
+/**
+ * Best-effort audit write. Returns the row, or null if persistence failed.
+ *
+ * Fine for anything that can be undone — a restart, a settings change, a
+ * failed attempt. Losing that line costs a gap in the history; refusing the
+ * work because the journal hiccuped would cost more.
+ *
+ * NOT fine for anything irreversible. Use beginAudit() or recordAuditIn()
+ * there: an action nobody can undo must not happen unless it is recorded.
+ */
 export async function recordAudit(input: AuditInput): Promise<AuditLog | null> {
   try {
     return await prisma.auditLog.create({data: input});
   } catch (err) {
     log.error({err, action: input.action}, 'failed to write audit log');
     return null;
+  }
+}
+
+/**
+ * The result an action carries between being recorded and being finished.
+ *
+ * A row still holding this is not junk to be cleaned up — it is the most
+ * important row in the journal: something irreversible was started on someone
+ * else's production machine and nothing ever wrote down how it ended, which
+ * means the process died in the middle of it.
+ */
+export const AUDIT_STARTED = 'started';
+
+/** Raised when an irreversible action could not be journalled, so it did not happen. */
+export class AuditUnavailableError extends Error {
+  constructor(action: string, options?: {cause?: unknown}) {
+    super(
+      `Refused to run ${action}: the operations journal could not be written, ` +
+        `and an action that cannot be undone must not happen unrecorded`,
+      options,
+    );
+    this.name = 'AuditUnavailableError';
+  }
+}
+
+export interface AuditHandle {
+  /**
+   * Records how the action ended. Best-effort on purpose: the act has already
+   * happened and is already in the journal, so only the outcome is at stake,
+   * and there is nothing left to refuse.
+   */
+  finish(result: 'ok' | 'error'): Promise<void>;
+}
+
+/**
+ * Journals an irreversible action *before* it is attempted.
+ *
+ * For work that lands on someone else's production machine, where the
+ * alternative ordering has a hole in it: act first, journal after, and a
+ * journal that fails leaves a deleted database with nothing to say who deleted
+ * it. Reporting that failure to whoever is looking at the screen does not
+ * close the hole — the journal is read months later, by someone finding out
+ * what happened.
+ *
+ * Throws AuditUnavailableError when the row cannot be written. The caller must
+ * then refuse the action rather than perform it: the panel has not been
+ * touched yet, so refusing costs an operator one retry, while proceeding costs
+ * an unattributable destructive change on a client's server.
+ */
+export async function beginAudit(input: Omit<AuditInput, 'result'>): Promise<AuditHandle> {
+  let row: AuditLog;
+  try {
+    row = await prisma.auditLog.create({data: {...input, result: AUDIT_STARTED}});
+  } catch (err) {
+    log.error(
+      {err, action: input.action},
+      'refused an irreversible action: it could not be journalled beforehand',
+    );
+    throw new AuditUnavailableError(input.action);
+  }
+
+  return {
+    async finish(result) {
+      try {
+        await prisma.auditLog.update({where: {id: row.id}, data: {result}});
+      } catch (err) {
+        log.error(
+          {err, action: input.action, auditId: row.id},
+          'an irreversible action finished but its outcome could not be recorded',
+        );
+      }
+    },
+  };
+}
+
+/**
+ * Writes the journal line inside the caller's transaction.
+ *
+ * For irreversible changes to our own database, where both halves can be made
+ * to stand or fall together — stronger than journalling first, because there is
+ * no window in which one exists without the other.
+ *
+ * A failure here aborts the caller's transaction, and that is the entire point.
+ * It is re-thrown as AuditUnavailableError rather than passed on raw so that the
+ * operator is told why nothing happened: a database constraint message quoted
+ * into a toast explains the mechanism to someone asking about the outcome.
+ */
+export async function recordAuditIn(
+  tx: Prisma.TransactionClient,
+  input: AuditInput,
+): Promise<AuditLog> {
+  try {
+    return await tx.auditLog.create({data: input});
+  } catch (err) {
+    log.error(
+      {err, action: input.action},
+      'rolling back an irreversible change: its journal line could not be written',
+    );
+    throw new AuditUnavailableError(input.action, {cause: err});
   }
 }
 
@@ -53,7 +161,9 @@ function buildWhere(p: AuditListParams): Prisma.AuditLogWhereInput {
   if (p.userId) where.userId = p.userId;
   // Anything that is not a plain success counts as a failure: actions write
   // 'error', but the column is a free string and must not silently swallow
-  // a value nobody anticipated.
+  // a value nobody anticipated. That deliberately includes AUDIT_STARTED —
+  // an irreversible action whose outcome was never recorded belongs in front
+  // of whoever is looking for problems, not filed under success.
   if (p.result === 'ok') where.result = 'ok';
   else if (p.result === 'error') where.result = {not: 'ok'};
   if (p.from || p.to) {

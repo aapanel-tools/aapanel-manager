@@ -10,7 +10,7 @@ import {
   formatFingerprint,
   probeCertificate,
 } from '@/lib/aapanel';
-import {recordAudit} from '@/lib/audit';
+import {recordAudit, recordAuditIn} from '@/lib/audit';
 import {serverLabel} from '@/lib/servers/label';
 import {mapLimit} from '@/lib/utils/concurrency';
 import {prisma} from '@/lib/db/prisma';
@@ -18,6 +18,7 @@ import {log} from '@/log';
 import {
   certificateInspectSchema,
   serverCreateSchema,
+  serverDeleteSchema,
   serverUpdateSchema,
   testConnectionSchema,
 } from '@/lib/validation/server';
@@ -140,18 +141,34 @@ export async function deleteServerAction(formData: FormData): Promise<SimpleResu
   } catch {
     return {ok: false, message: 'forbidden'};
   }
-  const id = String(formData.get('id') ?? '');
-  if (!id) return {ok: false, message: 'missing id'};
+  const parsed = serverDeleteSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return {ok: false, message: 'validation'};
+  const {id, confirm} = parsed.data;
+
   try {
-    const server = await prisma.server.delete({where: {id}}); // ServerStatus cascades
-    // Audit WITHOUT serverId: the row is already gone, so an FK reference would
-    // fail the insert (best-effort audit would then silently drop the delete
-    // record). Identity is preserved in `target` instead.
-    await recordAudit({
-      userId: user.id,
-      action: 'server.delete',
-      target: `${server.name} (${id})`,
-      result: 'ok',
+    // The typed name is checked here, not only in the dialog: a guard that
+    // lives in the browser guards nothing. Same shape as the database and
+    // project deletions, which this one used to ask less than.
+    const existing = await prisma.server.findUnique({where: {id}, select: {name: true}});
+    if (!existing) return {ok: false, message: 'notFound'};
+    if (confirm.trim() !== existing.name) return {ok: false, message: 'confirmMismatch'};
+
+    // One transaction, because this is irreversible and entirely ours: either
+    // the registration goes and the journal says so, or neither happens. The
+    // previous ordering — delete, then a best-effort journal write — could
+    // lose a server together with any record of who removed it, and did:
+    // recordAudit swallows its own failure by design (Д-19).
+    await prisma.$transaction(async (tx) => {
+      const server = await tx.server.delete({where: {id}}); // ServerStatus cascades
+      // Journalled WITHOUT serverId: the row is already gone inside this
+      // transaction, so an FK reference would fail the insert. Identity is
+      // preserved in `target` instead.
+      await recordAuditIn(tx, {
+        userId: user.id,
+        action: 'server.delete',
+        target: `${server.name} (${id})`,
+        result: 'ok',
+      });
     });
     revalidatePath('/servers');
     return {ok: true, message: 'deleted'};

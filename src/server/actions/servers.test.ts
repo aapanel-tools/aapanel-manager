@@ -133,13 +133,51 @@ describe('refreshVisibleStatusesAction', () => {
 describe('deleteServerAction', () => {
   it('deletes a server (cascades status) and records the deletion in the audit log', async () => {
     const s = await prisma.server.create({data: {name: `Del-${uniq()}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
-    const res = await deleteServerAction(fd({id: s.id}));
+    const res = await deleteServerAction(fd({id: s.id, confirm: s.name}));
     expect(res.ok).toBe(true);
     expect(await prisma.server.findUnique({where: {id: s.id}})).toBeNull();
     // The deletion MUST be audited even though the server FK is gone (id lives in target).
     const audit = await prisma.auditLog.findFirst({where: {action: 'server.delete', target: {contains: s.id}}});
     expect(audit).not.toBeNull();
     if (audit) cleanupAuditIds.push(audit.id);
+  });
+
+  it('refuses without the typed name, and the server survives', async () => {
+    // The guard is here, not only in the dialog. This row holds the panel's
+    // api_sk and its pinned fingerprint; a mis-click costs re-entering a key
+    // that is equal to root on that machine.
+    const s = await prisma.server.create({data: {name: `Keep-${uniq()}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
+    cleanupServerIds.push(s.id);
+
+    const missing = await deleteServerAction(fd({id: s.id}));
+    expect(missing.ok).toBe(false);
+    const wrong = await deleteServerAction(fd({id: s.id, confirm: 'not the name'}));
+    expect(wrong.ok).toBe(false);
+
+    expect(await prisma.server.findUnique({where: {id: s.id}})).not.toBeNull();
+  });
+
+  it('keeps the server when the journal cannot be written (Д-19)', async () => {
+    // The invariant: an irreversible change and its journal line stand or fall
+    // together. Forced the honest way — the acting user does not exist, so the
+    // AuditLog FK rejects the insert, which is exactly the failure seen in the
+    // wild. Before the transaction, the server vanished and nothing recorded it.
+    const s = await prisma.server.create({data: {name: `Tx-${uniq()}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
+    cleanupServerIds.push(s.id);
+    const realUser = guard.user.id;
+    guard.user.id = 'no-such-user-id';
+    try {
+      const res = await deleteServerAction(fd({id: s.id, confirm: s.name}));
+      expect(res.ok).toBe(false);
+      // And the operator is told why nothing happened, rather than being
+      // handed a database constraint message about a table they never asked
+      // about.
+      if (!res.ok) expect(res.message).toMatch(/journal/i);
+    } finally {
+      guard.user.id = realUser;
+    }
+
+    expect(await prisma.server.findUnique({where: {id: s.id}})).not.toBeNull();
   });
 });
 

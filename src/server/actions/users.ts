@@ -5,7 +5,7 @@ import {requireUser, requireAdmin, AuthError} from '@/lib/auth/guards';
 import type {SessionUser} from '@/lib/auth/guards';
 import {prisma} from '@/lib/db/prisma';
 import {hashPassword, verifyPassword} from '@/lib/crypto/password';
-import {recordAudit} from '@/lib/audit';
+import {recordAudit, recordAuditIn} from '@/lib/audit';
 import {log} from '@/log';
 import {
   userCreateSchema,
@@ -162,8 +162,18 @@ export async function deleteUserAction(formData: FormData): Promise<UserMutResul
     });
     if (denial) return {ok: false, error: denial};
 
-    await prisma.user.delete({where: {id}}); // authored audit logs keep their row (userId set null)
-    await recordAudit({userId: actor.id, action: 'user.delete', target: `${target.email} (${id})`, result: 'ok'});
+    // Irreversible and entirely ours, so both halves go in one transaction:
+    // an account may not disappear without the journal saying who removed it
+    // (Д-19). The authored audit rows survive — their userId is set null.
+    await prisma.$transaction(async (tx) => {
+      await tx.user.delete({where: {id}});
+      await recordAuditIn(tx, {
+        userId: actor.id,
+        action: 'user.delete',
+        target: `${target.email} (${id})`,
+        result: 'ok',
+      });
+    });
     revalidatePath('/users');
     return {ok: true};
   } catch (err) {

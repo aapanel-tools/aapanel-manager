@@ -72,6 +72,7 @@
     "deleted": "Server deleted",
     "saved": "Saved",
     "confirmDelete": "Delete server \"{name}\"? This cannot be undone.",
+    "confirmDeleteLabel": "Type the server name to confirm",
     "noServers": "No servers yet",
     "page": "Page",
     "of": "of",
@@ -428,6 +429,7 @@
     "all": "Any result",
     "ok": "Succeeded",
     "error": "Failed",
+    "unfinished": "no outcome",
     "from": "From date",
     "to": "To date"
   },

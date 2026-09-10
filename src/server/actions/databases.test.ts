@@ -203,6 +203,66 @@ describe('deleteDatabaseAction', () => {
     if (audit) cleanupAuditIds.push(audit.id);
   });
 
+  it('journals the intent before the panel is touched, then the outcome (Д-19)', async () => {
+    // The row is destroyed on someone else's machine and cannot be undone, so
+    // the ordering matters: the journal has to say what is about to happen
+    // *before* it happens. Read from inside the panel call, which is the only
+    // moment that can tell the two orderings apart.
+    guard.user.role = 'admin';
+    const name = `tx-${uniq()}`;
+    let resultDuringCall = 'no audit row at all';
+
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          deleteDatabase: async () => {
+            const row = await prisma.auditLog.findFirst({
+              where: {action: 'db.delete', target: name},
+              orderBy: {createdAt: 'desc'},
+            });
+            resultDuringCall = row ? row.result : 'no audit row at all';
+          },
+        }) as never,
+    );
+
+    const res = await deleteDatabaseAction(
+      serverId,
+      fd({engine: 'pgsql', id: '2', name, confirm: name}),
+    );
+
+    expect(res.ok).toBe(true);
+    expect(resultDuringCall).toBe('started');
+
+    const after = await prisma.auditLog.findFirst({
+      where: {action: 'db.delete', target: name},
+      orderBy: {createdAt: 'desc'},
+    });
+    expect(after?.result).toBe('ok');
+    if (after) cleanupAuditIds.push(after.id);
+  });
+
+  it('refuses the deletion when the journal cannot be written, and spares the panel (Д-19)', async () => {
+    // Forced the honest way: the acting user does not exist, so the AuditLog
+    // foreign key rejects the row — the same failure seen in the wild. An
+    // operator loses one retry; the alternative is a deleted database with
+    // nobody named against it.
+    guard.user.role = 'admin';
+    const callsBefore = vi.mocked(createClientForServer).mock.calls.length;
+    const realUser = guard.user.id;
+    guard.user.id = 'no-such-user-id';
+    try {
+      const res = await deleteDatabaseAction(
+        serverId,
+        fd({engine: 'pgsql', id: '2', name: 'apptest', confirm: 'apptest'}),
+      );
+      expect(res.ok).toBe(false);
+    } finally {
+      guard.user.id = realUser;
+    }
+
+    expect(vi.mocked(createClientForServer).mock.calls.length).toBe(callsBefore);
+  });
+
   it('admin + confirm!==name → ok:false and deleteDatabase not called', async () => {
     guard.user.role = 'admin';
 

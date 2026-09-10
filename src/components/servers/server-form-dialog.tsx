@@ -1,6 +1,7 @@
 'use client';
 import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import type {ServerRow} from '@/lib/servers/query';
 import {
@@ -39,6 +40,9 @@ export interface ServerFormDialogProps {
 
 export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps) {
   const t = useTranslations('servers');
+  // An action refuses for its own reasons too — wrong role, a form that did
+  // not validate — and those arrived as bare English tokens (Д-23).
+  const actionError = useActionError();
   const action = mode === 'create' ? createServerAction : updateServerAction;
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState((server?.tlsMode ?? 'PINNED') === 'PINNED');
@@ -85,7 +89,7 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
         setCert(res.certificate);
       } else {
         setCert(null);
-        toast.error(res.message);
+        toast.error(actionError(res.message));
       }
     });
   }
@@ -96,7 +100,7 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
     startTest(async () => {
       const res = await testConnectionAction(fd);
       if (res.ok) toast.success(res.message);
-      else toast.error(res.message);
+      else toast.error(actionError(res.message));
     });
   }
 

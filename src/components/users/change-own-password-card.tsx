@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {toast} from 'sonner';
 import {changeOwnPasswordAction, type UserMutResult} from '@/server/actions/users';
 import {KNOWN_USER_ERRORS} from '@/components/users/errors';
+import {useActionError} from '@/components/use-action-error';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -25,7 +26,12 @@ export function ChangeOwnPasswordCard() {
   const [pending, start] = useTransition();
   const [formKey, setFormKey] = useState(0);
 
-  const errText = (code: string) => (KNOWN_USER_ERRORS.has(code) ? t(`err.${code}`) : code);
+  // The module's own vocabulary first, the shared one underneath: a role
+  // refusal or a validation failure is not specific to users, and used to
+  // fall through to here as a raw English token (Д-23).
+  const actionError = useActionError();
+  const errText = (code: string) =>
+    KNOWN_USER_ERRORS.has(code) ? t(`err.${code}`) : actionError(code);
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

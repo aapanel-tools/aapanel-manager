@@ -2,6 +2,7 @@
 
 import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {Loader2, FolderOpen} from 'lucide-react';
 import type {NodeProjectConfig, ProjectPreEnv, RunScript} from '@/lib/aapanel';
@@ -58,6 +59,9 @@ export interface ProjectFormDialogProps {
  */
 export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}: ProjectFormDialogProps) {
   const t = useTranslations('projects');
+  // An action refuses for its own reasons too — wrong role, a form that did
+  // not validate — and those arrived as bare English tokens (Д-23).
+  const actionError = useActionError();
   const [open, setOpen] = useState(false);
 
   // Form-data loading (on open) — its own transition so the spinner is accurate.
@@ -181,7 +185,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
         resetState();
         onDone();
       } else if (res.error !== 'validation') {
-        toast.error(res.error);
+        toast.error(actionError(res.error));
       }
     });
   }

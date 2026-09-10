@@ -18,6 +18,7 @@ import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
 import {Separator} from '@/components/ui/separator';
 import {scheduleText, clockTime} from '@/components/servers/detail/cron-schedule';
+import {useActionError} from '@/components/use-action-error';
 import {
   Dialog,
   DialogContent,
@@ -63,6 +64,9 @@ type Pending = null | 'run' | 'toggle' | 'delete';
  */
 export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDialogProps) {
   const t = useTranslations('cron');
+  // Refusals of the action's own — wrong role, a confirmation that did not
+  // match — come back as codes and are put into words in one shared place.
+  const actionError = useActionError();
   const [open, setOpen] = useState(false);
   const [logs, setLogs] = useState<string | null>(null);
   const [logsError, setLogsError] = useState<string | null>(null);
@@ -96,27 +100,6 @@ export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDia
     }
   }
 
-  /**
-   * Turns an action's refusal into something readable.
-   *
-   * Failures that came from a panel are already in the reader's language
-   * (presentError); the short tokens an action returns for its own refusals are
-   * not, and showing `forbidden` to an operator is the defect Д-21 was about.
-   */
-  function errorText(error: string): string {
-    switch (error) {
-      case 'forbidden':
-      case 'unauthenticated':
-        return t('errForbidden');
-      case 'confirm':
-        return t('errConfirm');
-      case 'validation':
-        return t('errValidation');
-      default:
-        return error;
-    }
-  }
-
   function runNow() {
     const fd = new FormData();
     fd.set('id', String(task.id));
@@ -132,7 +115,7 @@ export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDia
         loadLogs();
         onDone();
       } else {
-        toast.error(errorText(res.error));
+        toast.error(actionError(res.error));
       }
     });
   }
@@ -158,7 +141,7 @@ export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDia
         setPendingOp(null);
         onDone();
       } else {
-        toast.error(errorText(res.error));
+        toast.error(actionError(res.error));
       }
     });
   }
@@ -177,7 +160,7 @@ export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDia
         setConfirmValue('');
         onDone();
       } else {
-        toast.error(errorText(res.error));
+        toast.error(actionError(res.error));
       }
     });
   }

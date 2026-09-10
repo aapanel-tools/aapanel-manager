@@ -2,6 +2,7 @@
 
 import {useState} from 'react';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {ArrowUpCircle, Download, RotateCcw, Loader2, Check, X, Circle} from 'lucide-react';
 import {
@@ -67,6 +68,8 @@ const ERR_KEYS: Record<string, string> = {
   'up-to-date': 'updateUpToDate',
   'nothing-staged': 'errNothingStaged',
   'release-not-found': 'errReleaseNotFound',
+  // Was falling through to the raw token: it carries no message to show instead.
+  'no-target': 'errNoTarget',
 };
 
 export function UpdateActions(props: UpdateActionsProps) {
@@ -83,6 +86,7 @@ export function UpdateActions(props: UpdateActionsProps) {
     onChanged,
   } = props;
   const t = useTranslations('updates');
+  const actionError = useActionError();
   const [phase, setPhase] = useState<Phase>('idle');
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [steps, setSteps] = useState<Record<UpdateStep, StepState> | null>(null);
@@ -99,7 +103,11 @@ export function UpdateActions(props: UpdateActionsProps) {
 
   const errText = (code: string, message?: string): string => {
     const key = ERR_KEYS[code];
-    return key ? t(key) : message || code;
+    if (key) return t(key);
+    // Below the updater's own vocabulary sits the shared one: a role refusal or
+    // a validation failure is not specific to updates, and used to fall through
+    // to here as a raw English token (Д-23).
+    return actionError(code, message || code);
   };
 
   /** Polls the public health probe until it reports the target version, or times out. */

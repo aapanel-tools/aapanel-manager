@@ -2,6 +2,7 @@
 
 import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {deleteDatabaseAction} from '@/server/actions/databases';
 import type {Database} from '@/lib/aapanel';
@@ -27,6 +28,9 @@ export interface DatabaseDeleteDialogProps {
 
 export function DatabaseDeleteDialog({id, database, trigger, onDone}: DatabaseDeleteDialogProps) {
   const t = useTranslations('databases');
+  // An action refuses for its own reasons too — wrong role, a form that did
+  // not validate — and those arrived as bare English tokens (Д-23).
+  const actionError = useActionError();
   const [open, setOpen] = useState(false);
   const [confirmValue, setConfirmValue] = useState('');
   const [pending, start] = useTransition();
@@ -49,7 +53,7 @@ export function DatabaseDeleteDialog({id, database, trigger, onDone}: DatabaseDe
         setOpen(false);
         onDone();
       } else {
-        toast.error(res.error);
+        toast.error(actionError(res.error));
       }
     });
   }

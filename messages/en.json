@@ -257,10 +257,7 @@
     "toastEnabled": "Task enabled",
     "toastDisabled": "Task stopped",
     "toastAlready": "The panel was already in that state — nothing was changed",
-    "toastDeleted": "Task deleted",
-    "errForbidden": "Not enough rights",
-    "errConfirm": "The confirmation did not match",
-    "errValidation": "The form data is not valid"
+    "toastDeleted": "Task deleted"
   },
   "listSearch": {
     "clear": "Clear search"
@@ -274,6 +271,15 @@
     "unknown": "unknown error",
     "withDetail": "{message} — {detail}",
     "withServer": "{server}: {message}"
+  },
+  "actionError": {
+    "unauthenticated": "You are not signed in",
+    "forbidden": "Not enough rights: administrators only",
+    "validation": "The form is not filled in correctly — check the fields",
+    "confirm": "The confirmation did not match",
+    "invalid": "The app asked for something it does not support — reload the page",
+    "failed": "The action did not go through; details are in the application log",
+    "notFound": "Not found — it may have been deleted already"
   },
   "listNotice": {
     "incompleteTitle": "The list is incomplete",
@@ -416,7 +422,8 @@
     "errUpdateInProgress": "An update is already running.",
     "errNothingStaged": "There is no prepared update.",
     "errReleaseNotFound": "Release not found.",
-    "selfTlsPinned": "Self-signed certificate (trust this one only)"
+    "selfTlsPinned": "Self-signed certificate (trust this one only)",
+    "errNoTarget": "No version given."
   },
   "users": {
     "title": "Users",

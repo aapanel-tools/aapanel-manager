@@ -3,6 +3,7 @@
 import {useState, useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {saveUpdateSettingsAction, type SaveSettingsResult} from '@/server/actions/updates';
 import type {UpdateSettingsView, DeploymentMode} from '@/lib/version/types';
@@ -29,6 +30,9 @@ export interface UpdateSettingsFormProps {
 
 export function UpdateSettingsForm({settings}: UpdateSettingsFormProps) {
   const t = useTranslations('updates');
+  // An action refuses for its own reasons too — wrong role, a form that did
+  // not validate — and those arrived as bare English tokens (Д-23).
+  const actionError = useActionError();
   const router = useRouter();
   const [mode, setMode] = useState<DeploymentMode>(settings.deploymentMode);
   const [result, setResult] = useState<SaveSettingsResult>(INITIAL);
@@ -44,7 +48,7 @@ export function UpdateSettingsForm({settings}: UpdateSettingsFormProps) {
         toast.success(t('saved'));
         router.refresh(); // re-run the page so the status reflects the new repo
       } else if (res.error !== 'validation') {
-        toast.error(res.error);
+        toast.error(actionError(res.error));
       }
     });
   }

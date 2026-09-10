@@ -2,6 +2,7 @@
 
 import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {createDatabaseAction} from '@/server/actions/databases';
 import type {DbMutResult} from '@/server/actions/databases';
@@ -28,6 +29,9 @@ export interface DatabaseFormDialogProps {
 
 export function DatabaseFormDialog({id, trigger, onDone}: DatabaseFormDialogProps) {
   const t = useTranslations('databases');
+  // An action refuses for its own reasons too — wrong role, a form that did
+  // not validate — and those arrived as bare English tokens (Д-23).
+  const actionError = useActionError();
   const [open, setOpen] = useState(false);
   const [engine, setEngine] = useState<DbEngine>('mysql');
   const [result, setResult] = useState<DbMutResult>(INITIAL);
@@ -52,7 +56,7 @@ export function DatabaseFormDialog({id, trigger, onDone}: DatabaseFormDialogProp
         setOpen(false);
         onDone();
       } else if (res.error !== 'validation') {
-        toast.error(res.error);
+        toast.error(actionError(res.error));
       }
     });
   }

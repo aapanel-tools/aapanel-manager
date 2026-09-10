@@ -2,6 +2,7 @@
 import {useState, useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {deleteServerAction} from '@/server/actions/servers';
 import {Button} from '@/components/ui/button';
@@ -33,6 +34,9 @@ export interface DeleteServerDialogProps {
  */
 export function DeleteServerDialog({server, trigger}: DeleteServerDialogProps) {
   const t = useTranslations('servers');
+  // An action refuses for its own reasons too — wrong role, a form that did
+  // not validate — and those arrived as bare English tokens (Д-23).
+  const actionError = useActionError();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [confirmValue, setConfirmValue] = useState('');
@@ -54,7 +58,7 @@ export function DeleteServerDialog({server, trigger}: DeleteServerDialogProps) {
         setOpen(false);
         router.refresh();
       } else {
-        toast.error(res.message);
+        toast.error(actionError(res.message));
       }
     });
   }

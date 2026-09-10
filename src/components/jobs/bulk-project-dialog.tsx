@@ -2,6 +2,7 @@
 import {useMemo, useState, useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {createProjectControlJobAction} from '@/server/actions/jobs';
 import {Button} from '@/components/ui/button';
@@ -36,6 +37,7 @@ export interface BulkProjectDialogProps {
  */
 export function BulkProjectDialog({servers, trigger}: BulkProjectDialogProps) {
   const t = useTranslations('jobs');
+  const actionError = useActionError();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [project, setProject] = useState('');
@@ -86,6 +88,31 @@ export function BulkProjectDialog({servers, trigger}: BulkProjectDialogProps) {
     });
   }
 
+  /**
+   * The queue's own refusals, then everything else.
+   *
+   * Written as a switch over literal keys rather than `t(`error.${code}`)`,
+   * which is what stood here: messages.test.ts skips dynamic keys on purpose,
+   * so a queue code without a translation reached the operator as the key
+   * itself and the gate stayed green (Д-17, Д-20, Д-23). Codes that are not the
+   * queue's own — a role refusal, a validation failure — belong to the shared
+   * dictionary, which is why they are not repeated here.
+   */
+  function queueError(code: string): string {
+    switch (code) {
+      case 'unknown-kind':
+        return t('error.unknown-kind');
+      case 'no-servers':
+        return t('error.no-servers');
+      case 'too-many-servers':
+        return t('error.too-many-servers');
+      case 'missing-servers':
+        return t('error.missing-servers');
+      default:
+        return actionError(code);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={reset}>
       <DialogTrigger render={trigger} />
@@ -98,7 +125,7 @@ export function BulkProjectDialog({servers, trigger}: BulkProjectDialogProps) {
         <div className="space-y-4">
           {error ? (
             <p className="text-sm text-destructive" role="alert">
-              {t(`error.${error}`)}
+              {queueError(error)}
             </p>
           ) : null}
 

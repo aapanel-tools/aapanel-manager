@@ -3,6 +3,7 @@
 import {useCallback, useEffect, useState, useTransition} from 'react';
 import {usePathname, useRouter, useSearchParams} from 'next/navigation';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {
   type ColumnDef,
   type ColumnSizingState,
@@ -44,6 +45,9 @@ export interface ServersTableProps {
 
 export function ServersTable({data, total, params, isAdmin}: ServersTableProps) {
   const t = useTranslations('servers');
+  // An action refuses for its own reasons too — wrong role, a form that did
+  // not validate — and those arrived as bare English tokens (Д-23).
+  const actionError = useActionError();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -103,11 +107,13 @@ export function ServersTable({data, total, params, isAdmin}: ServersTableProps) 
           toast.success(t('refreshed'));
           router.refresh();
         } else {
-          toast.error(res.message);
+          toast.error(actionError(res.message));
         }
       });
     },
-    [router, t],
+    // actionError is memoised on the translator, so this list stays as stable
+    // as it was before the refusal dictionary arrived.
+    [router, t, actionError],
   );
 
   const columns: ColumnDef<ServerRow>[] = [

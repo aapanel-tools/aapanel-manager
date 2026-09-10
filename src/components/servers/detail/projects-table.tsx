@@ -2,6 +2,7 @@
 
 import {useEffect, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {FileText, Play, Square, RotateCcw, RefreshCw, Pencil, Trash2, PlusCircle} from 'lucide-react';
 import type {ProjectsResult} from '@/server/actions/projects';
@@ -40,6 +41,9 @@ const PROJECTS_POLL_INTERVAL_MS = 12_000;
 
 export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   const t = useTranslations('projects');
+  // An action refuses for its own reasons too — wrong role, a form that did
+  // not validate — and those arrived as bare English tokens (Д-23).
+  const actionError = useActionError();
   // Manual refresh, the post-operation refresh and the background poll all go
   // through one place, which is also what keeps a slow answer from painting
   // over a newer one.
@@ -72,7 +76,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
         toast.success(t(OP_TOAST_KEY[op]));
         await reload();
       } else {
-        toast.error(res.message);
+        toast.error(actionError(res.message));
       }
     });
   }

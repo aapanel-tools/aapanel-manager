@@ -2,6 +2,7 @@
 import {useEffect, useState, useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
+import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {cancelJobAction} from '@/server/actions/jobs';
 import {Badge} from '@/components/ui/badge';
@@ -52,6 +53,7 @@ function tone(status: string): 'secondary' | 'destructive' | 'outline' {
 
 export function JobDetail({job}: {job: JobDetailView}) {
   const t = useTranslations('jobs');
+  const actionError = useActionError();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [cancelling, setCancelling] = useState(false);
@@ -73,7 +75,12 @@ export function JobDetail({job}: {job: JobDetailView}) {
     start(async () => {
       const res = await cancelJobAction(job.id);
       if (res.ok) toast.success(t('cancelRequested'));
-      else toast.error(t(`error.${res.message}`));
+      // 'alreadyFinished' is the queue's own word for it; everything else a
+      // cancel can answer with — a role refusal, an unforeseen failure — is
+      // shared vocabulary. A dynamic key stood here, which the translation
+      // test cannot see (Д-23).
+      else if (res.message === 'alreadyFinished') toast.error(t('error.alreadyFinished'));
+      else toast.error(actionError(res.message ?? 'failed'));
       setCancelling(false);
       router.refresh();
     });

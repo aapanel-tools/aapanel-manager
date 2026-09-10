@@ -414,6 +414,38 @@ export interface FirewallOverview {
   failures: SourceFailure[];
 }
 
+/**
+ * One FTP account.
+ *
+ * There is no password field, and its absence is the point rather than an
+ * oversight. The panel returns every account's password in clear text with the
+ * list; a type that could hold it is a type that will eventually be logged,
+ * serialised into a page, or sent to a browser by someone in a hurry. What
+ * cannot be represented cannot leak (§16), and an operator who genuinely needs
+ * the password has the panel itself.
+ */
+export interface FtpUser {
+  id: number;
+  name: string;
+  /** Home directory. Created by the panel when the account is added. */
+  path: string;
+  note: string;
+  /** The panel stores this as the string "1"; false means the account is switched off. */
+  enabled: boolean;
+  addtime: string;
+  /** Bytes used and the quota, when the panel reports them; 0 means unlimited. */
+  quotaUsed: number;
+  quotaSize: number;
+}
+
+/** What creating an FTP account needs. The password goes straight to the panel. */
+export interface FtpCreateInput {
+  username: string;
+  password: string;
+  path: string;
+  note?: string;
+}
+
 export interface DbCreateInput {
   engine: DbEngine;
   name: string;

@@ -92,6 +92,8 @@ export type {
   Database,
   FirewallOverview,
   FirewallRule,
+  FtpUser,
+  FtpCreateInput,
   Site,
   SiteDetail,
   SiteDomain,

@@ -97,6 +97,45 @@ export const siteListResponse = envelope(
   ),
 );
 
+/**
+ * FTP accounts, from the same `getData` endpoint the site list uses.
+ *
+ * `password` is declared here and deliberately dropped one layer up. The panel
+ * really does return every account's password in clear text, and declaring the
+ * field is how the schema stays an honest description of the answer; not
+ * carrying it any further is how the app avoids handing a client's credential
+ * to a browser. The database list makes the same choice for the same reason.
+ *
+ * `status` is the string "1" here, where the scheduler sends the number 1 for
+ * the same kind of flag — hence the union, as everywhere else.
+ */
+export const ftpListResponse = envelope(
+  pagedList(
+    z.object({
+      id: z.number(),
+      name: z.string().default(''),
+      password: z.string().default(''),
+      status: z.union([z.string(), z.number()]).default(''),
+      ps: z.string().default(''),
+      addtime: z.string().default(''),
+      path: z.string().default(''),
+      quota: z
+        .object({used: z.number().default(0), size: z.number().default(0)})
+        .partial()
+        .optional(),
+    }),
+  ),
+);
+
+/**
+ * Any of the FTP module's changing operations.
+ *
+ * Untyped payload for the same reason the scheduler's mutations are: success is
+ * `status === 0`, and the panel's own word for it is a sentence in whatever
+ * language its interface is set to ("Настройка успешно!").
+ */
+export const ftpMutationResponse = envelope(z.unknown());
+
 // ---------------------------------------------------------------------------
 // Firewall (read-only)
 //

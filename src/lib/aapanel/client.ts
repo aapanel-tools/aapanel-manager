@@ -10,6 +10,8 @@ import {
   firewallInfoResponse,
   firewallPortRulesResponse,
   firewallStatusResponse,
+  ftpListResponse,
+  ftpMutationResponse,
   mysqlDatabaseListResponse,
   pgsqlDatabaseListResponse,
   projectInfoResponse,
@@ -49,6 +51,8 @@ import {
   type Database,
   type FirewallOverview,
   type FirewallRule,
+  type FtpUser,
+  type FtpCreateInput,
   type Site,
   type SiteDetail,
   type SiteDirectory,
@@ -1301,6 +1305,116 @@ export class AaPanelClient {
     } catch (err) {
       return {items: [], failures: [describeSourceFailure('firewall', err)], truncations: []};
     }
+  }
+
+  // ── FTP accounts ──────────────────────────────────────────────────────────
+
+  /**
+   * The FTP accounts on this panel.
+   *
+   * The password the panel sends with every row is dropped here and goes no
+   * further — not into the returned objects, not into a log line, not into the
+   * page. It is the same decision listDatabases() makes, and for a stronger
+   * reason: these are real system credentials for a client's server, and this
+   * process serves a whole fleet.
+   */
+  async listFtpUsers(params: {p?: number; limit?: number; search?: string} = {}): Promise<PartialResult<FtpUser>> {
+    const limit = params.limit ?? DEFAULT_PAGE_LIMIT;
+    try {
+      const raw = await this.post(
+        'v2/data?action=getData',
+        {
+          table: 'ftps',
+          p: String(params.p ?? 1),
+          limit: String(limit),
+          search: normalizeSearch(params.search),
+        },
+        ftpListResponse,
+      );
+      const msg = this.unwrapEnvelope<typeof raw.message>(raw);
+      const items: FtpUser[] = (msg.data ?? []).map((r) => ({
+        id: r.id,
+        name: r.name,
+        path: r.path,
+        note: r.ps,
+        // "1" here, 1 in the scheduler, for the same kind of flag.
+        enabled: panelInt(r.status) === 1,
+        addtime: r.addtime,
+        quotaUsed: r.quota?.used ?? 0,
+        quotaSize: r.quota?.size ?? 0,
+      }));
+      const cut = describePage('ftp', items.length, limit, msg.page);
+      return {items, failures: [], truncations: cut ? [cut] : []};
+    } catch (err) {
+      return {items: [], failures: [describeSourceFailure('ftp', err)], truncations: []};
+    }
+  }
+
+  /**
+   * Creates an FTP account.
+   *
+   * Two things happen on the client's machine, and only one of them is obvious:
+   * a real system FTP user appears, and `path` is created if it does not exist.
+   * Deleting the account later removes the first and leaves the second.
+   */
+  async createFtpUser(input: FtpCreateInput): Promise<void> {
+    const raw = await this.post(
+      'v2/ftp?action=AddUser',
+      {
+        ftp_username: input.username,
+        ftp_password: input.password,
+        path: input.path,
+        ps: input.note ?? input.username,
+      },
+      ftpMutationResponse,
+    );
+    // Success is the status; the panel's own word for it is a sentence in
+    // whatever language its interface happens to be set to.
+    this.unwrapEnvelope(raw);
+  }
+
+  /** Replaces an account's password. The new one is never logged, here or above. */
+  async setFtpUserPassword(id: number, username: string, password: string): Promise<void> {
+    const raw = await this.post(
+      'v2/ftp?action=SetUserPassword',
+      {id: String(id), ftp_username: username, new_password: password},
+      ftpMutationResponse,
+    );
+    this.unwrapEnvelope(raw);
+  }
+
+  /**
+   * Switches an account on or off.
+   *
+   * Unlike the scheduler's equivalent, this endpoint takes the state you want
+   * rather than flipping whatever is there — so there is nothing to re-read
+   * first, and a stale screen cannot produce the opposite of what was asked.
+   * Worth stating, so the caution cron needs is not copied here as a rule.
+   */
+  async setFtpUserEnabled(id: number, username: string, enabled: boolean): Promise<void> {
+    const raw = await this.post(
+      'v2/ftp?action=SetStatus',
+      {id: String(id), username, status: enabled ? '1' : '0'},
+      ftpMutationResponse,
+    );
+    this.unwrapEnvelope(raw);
+  }
+
+  /**
+   * Deletes an FTP account.
+   *
+   * The account goes; its home directory does not. That asymmetry is the
+   * panel's, it is documented, and the interface says so before asking for
+   * confirmation — an operator deleting an account to free space would
+   * otherwise be left with the same files and a missing login.
+   */
+  async deleteFtpUser(id: number, username: string): Promise<void> {
+    const raw = await this.post(
+      'v2/ftp?action=DeleteUser',
+      {id: String(id), username},
+      ftpMutationResponse,
+    );
+    this.unwrapEnvelope(raw);
   }
 
   /**

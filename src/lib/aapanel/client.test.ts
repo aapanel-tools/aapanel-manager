@@ -2155,6 +2155,173 @@ describe('AaPanelClient.listFirewallRules', () => {
 });
 
 // ---------------------------------------------------------------------------
+// AaPanelClient FTP (Ф-9)
+// ---------------------------------------------------------------------------
+
+/** A real row from a live v8 panel running Pureftpd — password included, as it is. */
+const FIXTURE_FTP_ROW = {
+  id: 1,
+  pid: 0,
+  name: 'ftpuser',
+  password: 'S3cretFromThePanel',
+  status: '1',
+  ps: 'ftpuser',
+  addtime: '2026-06-08 08:15:50',
+  path: '/www/wwwroot/ftpuser',
+  quota: {used: 0, size: 0, quota_push: {size: 0, used: 0}, quota_storage: {size: 0, used: 0}},
+};
+
+describe('AaPanelClient.listFtpUsers', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('never carries the account password out of this module', async () => {
+    // The panel returns every FTP password in clear text with the listing.
+    // This is the test that keeps it from travelling any further: no field
+    // holds it, so nothing downstream can log it, render it or send it.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: [FIXTURE_FTP_ROW]}}) as never,
+    );
+    const {items} = await new AaPanelClient(cfg).listFtpUsers();
+
+    expect(JSON.stringify(items)).not.toContain('S3cretFromThePanel');
+    expect(Object.keys(items[0]!)).not.toContain('password');
+  });
+
+  it('maps a real row into the shape the app talks in', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: [FIXTURE_FTP_ROW]}}) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listFtpUsers();
+
+    expect(failures).toEqual([]);
+    expect(items[0]).toEqual({
+      id: 1,
+      name: 'ftpuser',
+      path: '/www/wwwroot/ftpuser',
+      note: 'ftpuser',
+      // The panel writes this flag as the string "1" here and as the number 1
+      // in the scheduler; the app reads both.
+      enabled: true,
+      addtime: '2026-06-08 08:15:50',
+      quotaUsed: 0,
+      quotaSize: 0,
+    });
+  });
+
+  it('reads a switched-off account as switched off', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: [{...FIXTURE_FTP_ROW, status: '0'}]}}) as never,
+    );
+    const {items} = await new AaPanelClient(cfg).listFtpUsers();
+    expect(items[0]!.enabled).toBe(false);
+  });
+
+  it('asks the ftps table, and carries a search term', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    await new AaPanelClient(cfg).listFtpUsers({search: 'ftpuser'});
+
+    const body = new URLSearchParams(String((fetchMock.mock.calls[0][1] as {body: string}).body));
+    expect(body.get('table')).toBe('ftps');
+    expect(body.get('search')).toBe('ftpuser');
+  });
+
+  it('reports a refusal as a failure instead of an empty account list', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: 'Permission denied'}) as never,
+    );
+    const {items, failures} = await new AaPanelClient(cfg).listFtpUsers();
+
+    expect(items).toEqual([]);
+    expect(failures[0]).toMatchObject({source: 'ftp', kind: 'panel_error'});
+  });
+});
+
+describe('AaPanelClient FTP mutations', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const bodyOf = (call: number) =>
+    new URLSearchParams(String((fetchMock.mock.calls[call][1] as {body: string}).body));
+
+  it('creates an account with the fields the panel expects', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {result: 'Настройка успешно!'}}) as never,
+    );
+    await new AaPanelClient(cfg).createFtpUser({
+      username: 'deploy',
+      password: 'long-enough-password',
+      path: '/www/wwwroot/deploy',
+      note: 'CI',
+    });
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v2/ftp?action=AddUser');
+    expect(bodyOf(0).get('ftp_username')).toBe('deploy');
+    expect(bodyOf(0).get('path')).toBe('/www/wwwroot/deploy');
+    expect(bodyOf(0).get('ps')).toBe('CI');
+  });
+
+  it('falls back to the account name when no note is given', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {result: 'ok'}}) as never);
+    await new AaPanelClient(cfg).createFtpUser({
+      username: 'deploy',
+      password: 'long-enough-password',
+      path: '/www/wwwroot/deploy',
+    });
+    expect(bodyOf(0).get('ps')).toBe('deploy');
+  });
+
+  it('sets the state that was asked for, rather than flipping what is there', async () => {
+    // The contrast with the scheduler is the point: that endpoint toggles, so
+    // it has to be told what the current state is. This one takes the wanted
+    // state, so a stale screen cannot produce the opposite of the request.
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {result: 'ok'}}) as never);
+    await new AaPanelClient(cfg).setFtpUserEnabled(7, 'deploy', false);
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v2/ftp?action=SetStatus');
+    expect(bodyOf(0).get('status')).toBe('0');
+    expect(bodyOf(0).get('id')).toBe('7');
+    expect(bodyOf(0).get('username')).toBe('deploy');
+  });
+
+  it('changes a password without asking for the old one', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {result: 'ok'}}) as never);
+    await new AaPanelClient(cfg).setFtpUserPassword(7, 'deploy', 'a-new-long-password');
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v2/ftp?action=SetUserPassword');
+    expect(bodyOf(0).get('new_password')).toBe('a-new-long-password');
+  });
+
+  it('deletes an account by id and name', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {result: 'Успешно удалил'}}) as never,
+    );
+    await new AaPanelClient(cfg).deleteFtpUser(7, 'deploy');
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v2/ftp?action=DeleteUser');
+    expect(bodyOf(0).get('id')).toBe('7');
+    expect(bodyOf(0).get('username')).toBe('deploy');
+  });
+
+  it('judges success by the status, not by the panel’s wording', async () => {
+    // "Настройка успешно!" is a sentence in the panel's display language;
+    // matching it would tie the fleet to whichever language one panel is set to.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: {result: 'FTP user does not exist'}}) as never,
+    );
+    await expect(new AaPanelClient(cfg).deleteFtpUser(99, 'ghost')).rejects.toThrow(
+      'FTP user does not exist',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Server-side search (Ф-14)
 // ---------------------------------------------------------------------------
 

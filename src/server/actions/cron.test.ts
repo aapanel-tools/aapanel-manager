@@ -16,6 +16,11 @@ vi.mock('@/lib/auth/guards', async (orig) => {
       if (!guard.authenticated) throw new actual.AuthError('unauthenticated');
       return guard.user;
     }),
+    requireAdmin: vi.fn(async () => {
+      if (!guard.authenticated) throw new actual.AuthError('unauthenticated');
+      if (guard.user.role !== 'admin') throw new actual.AuthError('forbidden');
+      return guard.user;
+    }),
   };
 });
 
@@ -47,15 +52,35 @@ vi.mock('@/lib/aapanel', async (orig) => {
         truncations: [],
       }),
       getCronLogs: async () => '',
+      runCronTask: async () => undefined,
+      setCronTaskEnabled: async () => 'changed',
+      deleteCronTask: async () => undefined,
     })),
   };
 });
 
+// Next cache no-op
+vi.mock('next/cache', () => ({revalidatePath: vi.fn()}));
+
 import {prisma} from '@/lib/db/prisma';
 import {createClientForServer} from '@/lib/aapanel';
-import {listCronTasksAction, getCronLogsAction} from './cron';
+import {
+  listCronTasksAction,
+  getCronLogsAction,
+  runCronTaskAction,
+  setCronTaskEnabledAction,
+  deleteCronTaskAction,
+} from './cron';
+
+/** Builds a FormData from a plain object, the way the dialogs do. */
+function fd(obj: Record<string, string>): FormData {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(obj)) form.append(k, v);
+  return form;
+}
 
 const cleanupServerIds: string[] = [];
+const cleanupAuditIds: string[] = [];
 let userId = '';
 let serverId = '';
 const uniq = () => Math.random().toString(36).slice(2, 8);
@@ -80,6 +105,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  if (cleanupAuditIds.length) await prisma.auditLog.deleteMany({where: {id: {in: cleanupAuditIds}}});
   await prisma.server.deleteMany({where: {id: {in: cleanupServerIds}}});
   if (userId) await prisma.user.delete({where: {id: userId}}).catch(() => {});
 });
@@ -174,5 +200,258 @@ describe('getCronLogsAction', () => {
 
     expect(res.ok).toBe(false);
     expect(vi.mocked(createClientForServer).mock.calls.length).toBe(callsBefore);
+  });
+});
+
+describe('runCronTaskAction', () => {
+  it('runs the task and journals it', async () => {
+    const name = `run-${uniq()}`;
+    const res = await runCronTaskAction(serverId, fd({id: '1', name}));
+    expect(res.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({where: {action: 'cron.run', target: name}});
+    expect(audit?.result).toBe('ok');
+    if (audit) cleanupAuditIds.push(audit.id);
+  });
+
+  it('journals the intent before the panel is touched, then the outcome (Д-19)', async () => {
+    // Running a task cannot be undone — the script has run — and this is the
+    // entry someone will be looking for months later when they ask who told a
+    // client's server to run a script at 15:00. Read from inside the panel
+    // call, the only moment that can tell the two orderings apart.
+    const name = `run-order-${uniq()}`;
+    let resultDuringCall = 'no audit row at all';
+
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          runCronTask: async () => {
+            const row = await prisma.auditLog.findFirst({
+              where: {action: 'cron.run', target: name},
+              orderBy: {createdAt: 'desc'},
+            });
+            resultDuringCall = row ? row.result : 'no audit row at all';
+          },
+        }) as never,
+    );
+
+    const res = await runCronTaskAction(serverId, fd({id: '1', name}));
+
+    expect(res.ok).toBe(true);
+    expect(resultDuringCall).toBe('started');
+
+    const after = await prisma.auditLog.findFirst({
+      where: {action: 'cron.run', target: name},
+      orderBy: {createdAt: 'desc'},
+    });
+    expect(after?.result).toBe('ok');
+    if (after) cleanupAuditIds.push(after.id);
+  });
+
+  it('refuses to run when the journal cannot be written, and spares the panel (Д-19)', async () => {
+    // Forced the honest way: the acting user does not exist, so the AuditLog
+    // foreign key rejects the row. An operator loses one retry; the alternative
+    // is a script run on a client's machine with nobody named against it.
+    const callsBefore = vi.mocked(createClientForServer).mock.calls.length;
+    const realUser = guard.user.id;
+    guard.user.id = 'no-such-user-id';
+    try {
+      const res = await runCronTaskAction(serverId, fd({id: '1', name: 'whatever'}));
+      expect(res.ok).toBe(false);
+    } finally {
+      guard.user.id = realUser;
+    }
+    expect(vi.mocked(createClientForServer).mock.calls.length).toBe(callsBefore);
+  });
+
+  it('refuses a viewer without touching the panel', async () => {
+    guard.user.role = 'viewer';
+    const callsBefore = vi.mocked(createClientForServer).mock.calls.length;
+
+    const res = await runCronTaskAction(serverId, fd({id: '1', name: 'nightly'}));
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toBe('forbidden');
+    expect(vi.mocked(createClientForServer).mock.calls.length).toBe(callsBefore);
+  });
+
+  it('names an unnamed task by its number in the journal', async () => {
+    // The panel allows a task with no name. "Someone ran «»" is not a journal
+    // entry anybody can act on.
+    const res = await runCronTaskAction(serverId, fd({id: '77', name: ''}));
+    expect(res.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({where: {action: 'cron.run', target: '#77'}});
+    expect(audit).not.toBeNull();
+    if (audit) cleanupAuditIds.push(audit.id);
+  });
+});
+
+describe('setCronTaskEnabledAction', () => {
+  it('stops a task and journals which way it went', async () => {
+    const name = `toggle-${uniq()}`;
+    const res = await setCronTaskEnabledAction(serverId, fd({id: '1', name, enabled: 'false'}));
+    expect(res.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({where: {action: 'cron.disable', target: name}});
+    expect(audit?.result).toBe('ok');
+    if (audit) cleanupAuditIds.push(audit.id);
+  });
+
+  it('asks the client for the state that was requested, not for a flip', async () => {
+    // The panel's endpoint toggles; the app's contract is "make it so". If this
+    // ever degrades into passing a direction, a stale screen starts stopping
+    // backups it meant to start.
+    let seen: unknown = 'never called';
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          setCronTaskEnabled: async (id: number, enabled: boolean) => {
+            seen = {id, enabled};
+            return 'changed';
+          },
+        }) as never,
+    );
+
+    await setCronTaskEnabledAction(serverId, fd({id: '9', name: 'x', enabled: 'true'}));
+    expect(seen).toEqual({id: 9, enabled: true});
+  });
+
+  it('passes "already" through instead of claiming it changed something', async () => {
+    // It means this screen and that panel had disagreed, which is worth saying.
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () => ({setCronTaskEnabled: async () => 'already'}) as never,
+    );
+
+    const res = await setCronTaskEnabledAction(
+      serverId,
+      fd({id: '1', name: 'nightly', enabled: 'true'}),
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.message).toBe('already');
+  });
+
+  it('journals the failure too', async () => {
+    const name = `toggle-fail-${uniq()}`;
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          setCronTaskEnabled: async () => {
+            throw new Error('panel said no');
+          },
+        }) as never,
+    );
+
+    const res = await setCronTaskEnabledAction(serverId, fd({id: '1', name, enabled: 'false'}));
+    expect(res.ok).toBe(false);
+
+    const audit = await prisma.auditLog.findFirst({where: {action: 'cron.disable', target: name}});
+    expect(audit?.result).toBe('error');
+    if (audit) cleanupAuditIds.push(audit.id);
+  });
+
+  it('refuses a viewer without touching the panel', async () => {
+    guard.user.role = 'viewer';
+    const callsBefore = vi.mocked(createClientForServer).mock.calls.length;
+
+    const res = await setCronTaskEnabledAction(
+      serverId,
+      fd({id: '1', name: 'nightly', enabled: 'false'}),
+    );
+
+    expect(res.ok).toBe(false);
+    expect(vi.mocked(createClientForServer).mock.calls.length).toBe(callsBefore);
+  });
+});
+
+describe('deleteCronTaskAction', () => {
+  it('deletes when the typed phrase matches, and journals it', async () => {
+    const name = `del-${uniq()}`;
+    const res = await deleteCronTaskAction(serverId, fd({id: '1', name, confirm: name}));
+    expect(res.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({where: {action: 'cron.delete', target: name}});
+    expect(audit?.result).toBe('ok');
+    if (audit) cleanupAuditIds.push(audit.id);
+  });
+
+  it('re-checks the typed phrase on the server, and spares the panel when it is wrong', async () => {
+    // A server action is a public endpoint. A confirmation only the browser
+    // enforces is decoration.
+    const callsBefore = vi.mocked(createClientForServer).mock.calls.length;
+
+    const res = await deleteCronTaskAction(
+      serverId,
+      fd({id: '1', name: 'nightly', confirm: 'nightl'}),
+    );
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toBe('confirm');
+    expect(vi.mocked(createClientForServer).mock.calls.length).toBe(callsBefore);
+  });
+
+  it('accepts the number as the phrase for a task with no name', async () => {
+    const res = await deleteCronTaskAction(serverId, fd({id: '42', name: '', confirm: '#42'}));
+    expect(res.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({where: {action: 'cron.delete', target: '#42'}});
+    expect(audit).not.toBeNull();
+    if (audit) cleanupAuditIds.push(audit.id);
+  });
+
+  it('journals the intent before the panel is touched (Д-19)', async () => {
+    const name = `del-order-${uniq()}`;
+    let resultDuringCall = 'no audit row at all';
+
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          deleteCronTask: async () => {
+            const row = await prisma.auditLog.findFirst({
+              where: {action: 'cron.delete', target: name},
+              orderBy: {createdAt: 'desc'},
+            });
+            resultDuringCall = row ? row.result : 'no audit row at all';
+          },
+        }) as never,
+    );
+
+    const res = await deleteCronTaskAction(serverId, fd({id: '1', name, confirm: name}));
+
+    expect(res.ok).toBe(true);
+    expect(resultDuringCall).toBe('started');
+
+    const after = await prisma.auditLog.findFirst({
+      where: {action: 'cron.delete', target: name},
+      orderBy: {createdAt: 'desc'},
+    });
+    expect(after?.result).toBe('ok');
+    if (after) cleanupAuditIds.push(after.id);
+  });
+
+  it('refuses a viewer without touching the panel', async () => {
+    guard.user.role = 'viewer';
+    const callsBefore = vi.mocked(createClientForServer).mock.calls.length;
+
+    const res = await deleteCronTaskAction(
+      serverId,
+      fd({id: '1', name: 'nightly', confirm: 'nightly'}),
+    );
+
+    expect(res.ok).toBe(false);
+    expect(vi.mocked(createClientForServer).mock.calls.length).toBe(callsBefore);
+  });
+
+  it('never writes the script into the journal', async () => {
+    // Backup scripts on a hosting panel routinely carry a database password in
+    // plain text, and the journal is read by more people and kept far longer
+    // than any screen (§16).
+    const name = `del-secret-${uniq()}`;
+    await deleteCronTaskAction(serverId, fd({id: '1', name, confirm: name}));
+
+    const rows = await prisma.auditLog.findMany({where: {action: 'cron.delete', target: name}});
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.target).toBe(name);
+    cleanupAuditIds.push(rows[0]!.id);
   });
 });

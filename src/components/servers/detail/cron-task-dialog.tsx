@@ -2,11 +2,20 @@
 
 import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
-import {RefreshCw} from 'lucide-react';
+import {toast} from 'sonner';
+import {Play, Power, PowerOff, RefreshCw, Trash2} from 'lucide-react';
 import type {CronTask} from '@/lib/aapanel';
-import {getCronLogsAction} from '@/server/actions/cron';
+import {
+  getCronLogsAction,
+  runCronTaskAction,
+  setCronTaskEnabledAction,
+  deleteCronTaskAction,
+} from '@/server/actions/cron';
+import {cronConfirmPhrase} from '@/lib/validation/cron';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
+import {Input} from '@/components/ui/input';
+import {Label} from '@/components/ui/label';
 import {Separator} from '@/components/ui/separator';
 import {scheduleText, clockTime} from '@/components/servers/detail/cron-schedule';
 import {
@@ -20,36 +29,52 @@ import {
 export interface CronTaskDialogProps {
   id: string;
   task: CronTask;
+  /** Whether the viewer may change anything; the controls are hidden otherwise. */
+  isAdmin: boolean;
   trigger: React.ReactElement;
+  /** Re-reads the list, so the row behind this card stops showing the old state. */
+  onDone: () => void;
 }
 
+/** Which operation is waiting to be confirmed, if any. */
+type Pending = null | 'run' | 'toggle' | 'delete';
+
 /**
- * Read-only card for one scheduled task: what it runs, and what it last printed.
+ * One scheduled task: what it runs, what it last printed, and the three things
+ * that can be done to it.
  *
- * Everything except the output is already in hand — the list carries it — so
- * the card opens filled in and the one call to the panel is the log. That call
- * happens on open rather than on mount because the table renders one of these
- * per row, and a card nobody opened must not reach a production panel
- * (ADR-0004).
+ * The controls live here rather than in the table row, and that is a safety
+ * decision rather than a layout one. This card is the only place the script is
+ * visible, and running or deleting a task without seeing what it does is how a
+ * client's site goes down. The cost is a click: to run a task you open it
+ * first. These operations are rare, and doing them to many servers at once is
+ * Ф-6's job, with its own staged rollout and its own preview.
  *
- * The script is shown here and nowhere else. It is what makes a scheduled task
- * comprehensible, and it is also where a hosting panel keeps `mysqldump
- * -p<password>` — so it is behind a deliberate click, never in a listing, and
- * never in a log line the app writes (§16).
+ * Confirmations are inline rather than nested dialogs. A dialog inside a dialog
+ * works in this component kit and reads badly, and focus goes missing in it.
  *
- * The log is one run, not a history: the panel keeps only the most recent
- * output. A task that fails every night looks the same as one that failed once,
- * and the card says so rather than letting a clean log read as proof.
+ * The three operations are deliberately not equivalent:
+ *
+ *   run     — cannot be undone, but runs the script the schedule runs anyway
+ *   toggle  — reversible, and the panel offers only a toggle, never a set, so
+ *             the server re-reads the real state before acting
+ *   delete  — irreversible, so the task's name has to be typed, and the server
+ *             checks the typed phrase again rather than trusting this form
  */
-export function CronTaskDialog({id, task, trigger}: CronTaskDialogProps) {
+export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDialogProps) {
   const t = useTranslations('cron');
   const [open, setOpen] = useState(false);
   const [logs, setLogs] = useState<string | null>(null);
   const [logsError, setLogsError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [pendingOp, setPendingOp] = useState<Pending>(null);
+  const [confirmValue, setConfirmValue] = useState('');
+  const [loadingLogs, startLogs] = useTransition();
+  const [working, startWork] = useTransition();
+
+  const phrase = cronConfirmPhrase(task);
 
   function loadLogs() {
-    startTransition(async () => {
+    startLogs(async () => {
       const res = await getCronLogsAction(id, task.id);
       if (res.ok) {
         setLogs(res.logs);
@@ -64,7 +89,97 @@ export function CronTaskDialog({id, task, trigger}: CronTaskDialogProps) {
 
   function onOpenChange(next: boolean) {
     setOpen(next);
-    if (next && logs === null && !pending) loadLogs();
+    if (next && logs === null && !loadingLogs) loadLogs();
+    if (!next) {
+      setPendingOp(null);
+      setConfirmValue('');
+    }
+  }
+
+  /**
+   * Turns an action's refusal into something readable.
+   *
+   * Failures that came from a panel are already in the reader's language
+   * (presentError); the short tokens an action returns for its own refusals are
+   * not, and showing `forbidden` to an operator is the defect Д-21 was about.
+   */
+  function errorText(error: string): string {
+    switch (error) {
+      case 'forbidden':
+      case 'unauthenticated':
+        return t('errForbidden');
+      case 'confirm':
+        return t('errConfirm');
+      case 'validation':
+        return t('errValidation');
+      default:
+        return error;
+    }
+  }
+
+  function runNow() {
+    const fd = new FormData();
+    fd.set('id', String(task.id));
+    fd.set('name', task.name);
+    startWork(async () => {
+      const res = await runCronTaskAction(id, fd);
+      if (res.ok) {
+        toast.success(t('toastRan'));
+        setPendingOp(null);
+        // The panel answers when it has started the task, not when the task is
+        // done, so this may well show the previous run's output. The card says
+        // as much above the log rather than pretending otherwise.
+        loadLogs();
+        onDone();
+      } else {
+        toast.error(errorText(res.error));
+      }
+    });
+  }
+
+  function toggle() {
+    const fd = new FormData();
+    fd.set('id', String(task.id));
+    fd.set('name', task.name);
+    fd.set('enabled', task.enabled ? 'false' : 'true');
+    startWork(async () => {
+      const res = await setCronTaskEnabledAction(id, fd);
+      if (res.ok) {
+        // `already` means the panel was found in the requested state and
+        // nothing was sent — worth saying, because it means this screen and
+        // that panel had disagreed.
+        toast.success(
+          res.message === 'already'
+            ? t('toastAlready')
+            : task.enabled
+              ? t('toastDisabled')
+              : t('toastEnabled'),
+        );
+        setPendingOp(null);
+        onDone();
+      } else {
+        toast.error(errorText(res.error));
+      }
+    });
+  }
+
+  function remove() {
+    const fd = new FormData();
+    fd.set('id', String(task.id));
+    fd.set('name', task.name);
+    fd.set('confirm', confirmValue);
+    startWork(async () => {
+      const res = await deleteCronTaskAction(id, fd);
+      if (res.ok) {
+        toast.success(t('toastDeleted'));
+        setOpen(false);
+        setPendingOp(null);
+        setConfirmValue('');
+        onDone();
+      } else {
+        toast.error(errorText(res.error));
+      }
+    });
   }
 
   const row = (label: string, value: React.ReactNode) => (
@@ -138,7 +253,7 @@ export function CronTaskDialog({id, task, trigger}: CronTaskDialogProps) {
           <div>
             <div className="mb-2 flex items-center justify-between gap-2">
               <h3 className="text-sm font-medium">{t('logSection')}</h3>
-              <Button variant="outline" size="sm" disabled={pending} onClick={loadLogs}>
+              <Button variant="outline" size="sm" disabled={loadingLogs} onClick={loadLogs}>
                 <RefreshCw className="mr-1 h-3.5 w-3.5" />
                 {t('refresh')}
               </Button>
@@ -151,7 +266,7 @@ export function CronTaskDialog({id, task, trigger}: CronTaskDialogProps) {
               </p>
             )}
 
-            {pending && logs === null && (
+            {loadingLogs && logs === null && (
               <p className="text-sm text-muted-foreground">{t('loading')}</p>
             )}
 
@@ -164,6 +279,101 @@ export function CronTaskDialog({id, task, trigger}: CronTaskDialogProps) {
                 </pre>
               ))}
           </div>
+
+          {isAdmin && (
+            <>
+              <Separator />
+              {pendingOp === null ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setPendingOp('run')}>
+                    <Play className="mr-1 h-3.5 w-3.5" />
+                    {t('runNow')}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setPendingOp('toggle')}>
+                    {task.enabled ? (
+                      <PowerOff className="mr-1 h-3.5 w-3.5" />
+                    ) : (
+                      <Power className="mr-1 h-3.5 w-3.5" />
+                    )}
+                    {task.enabled ? t('stopTask') : t('startTask')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto text-destructive hover:text-destructive"
+                    onClick={() => setPendingOp('delete')}
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    {t('delete')}
+                  </Button>
+                </div>
+              ) : (
+                <div
+                  className="space-y-3 rounded-md border border-amber-500/40 bg-amber-500/5 p-3"
+                  role="alertdialog"
+                  aria-label={t('confirmTitle')}
+                >
+                  <p className="text-sm">
+                    {pendingOp === 'run'
+                      ? t('confirmRun')
+                      : pendingOp === 'delete'
+                        ? t('confirmDelete')
+                        : task.enabled
+                          ? t('confirmStop')
+                          : t('confirmStart')}
+                  </p>
+
+                  {pendingOp === 'delete' && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`cron-confirm-${task.id}`}>
+                        {t('confirmDeleteLabel', {phrase})}
+                      </Label>
+                      <Input
+                        id={`cron-confirm-${task.id}`}
+                        value={confirmValue}
+                        onChange={(e) => setConfirmValue(e.target.value)}
+                        autoComplete="off"
+                        placeholder={phrase}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={working}
+                      onClick={() => {
+                        setPendingOp(null);
+                        setConfirmValue('');
+                      }}
+                    >
+                      {t('cancel')}
+                    </Button>
+                    <Button
+                      variant={pendingOp === 'delete' ? 'destructive' : 'default'}
+                      size="sm"
+                      // The typed phrase is checked here so the button cannot be
+                      // pressed by accident, and again on the server, where a
+                      // browser cannot reach in and skip it.
+                      disabled={working || (pendingOp === 'delete' && confirmValue !== phrase)}
+                      onClick={
+                        pendingOp === 'run' ? runNow : pendingOp === 'delete' ? remove : toggle
+                      }
+                    >
+                      {pendingOp === 'run'
+                        ? t('runNow')
+                        : pendingOp === 'delete'
+                          ? t('delete')
+                          : task.enabled
+                            ? t('stopTask')
+                            : t('startTask')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

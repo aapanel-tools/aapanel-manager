@@ -6,6 +6,7 @@ import {
   batchOperationResponse,
   cronListResponse,
   cronLogsResponse,
+  cronMutationResponse,
   mysqlDatabaseListResponse,
   pgsqlDatabaseListResponse,
   projectInfoResponse,
@@ -1098,6 +1099,93 @@ export class AaPanelClient {
       cronLogsResponse,
     );
     return this.unwrapEnvelope<typeof raw.message>(raw).result;
+  }
+
+  /**
+   * Runs a task now, outside its schedule.
+   *
+   * Cannot be undone — the script has run — but it is the same script the
+   * schedule runs anyway, which is why this is the safest of the three changing
+   * operations and not a dangerous new capability. The panel answers as soon as
+   * it has started the task, not when the task finishes, so a slow script is
+   * still running when this resolves.
+   */
+  async runCronTask(id: number): Promise<void> {
+    const raw = await this.post(
+      'v2/crontab?action=StartTask',
+      {id: String(id)},
+      cronMutationResponse,
+    );
+    // Success is `status === 0` and nothing else. The panel's own word for it
+    // differs per action — a stable token for one, a sentence in the panel's
+    // display language for another — so matching the text would tie the fleet
+    // to whichever language one panel happens to be set to. unwrapEnvelope
+    // throws with the panel's wording when the status says no.
+    this.unwrapEnvelope(raw);
+  }
+
+  /**
+   * Brings a task to the state the operator asked for, enabled or stopped.
+   *
+   * The awkward part is the panel's: `set_cron_status` **toggles**. There is no
+   * field for the state you want, so the only way to set one is to know the
+   * current state — and the only trustworthy source of that is the panel,
+   * now. Acting on what a browser last saw would flip a task the wrong way
+   * whenever the two disagree, which is exactly the case the local-cache
+   * invariant is about (§16): a screen minutes old, or a change made in the
+   * panel itself, and one click stops a client's backup instead of starting it.
+   *
+   * So the list is re-read first. Returns `already` when nothing needed doing,
+   * which is a real outcome worth showing rather than a silent success.
+   *
+   * The check-then-act gap cannot be closed from here — the panel offers no
+   * conditional form of this call — so a change made in the same second still
+   * wins. It narrows the window from "as old as the screen" to "as old as one
+   * request", which is the difference between a common mistake and a rare one.
+   *
+   * `if_stop` stays false. True additionally kills the task if it happens to be
+   * running, and a backup cut off halfway is worse than one that finishes.
+   */
+  async setCronTaskEnabled(id: number, enabled: boolean): Promise<'changed' | 'already'> {
+    const {items, failures} = await this.listCronTasks();
+    if (failures.length > 0) {
+      // Refusing beats guessing: without the current state this call is a coin
+      // toss on someone's production schedule.
+      throw new AaPanelError(
+        'panel_error',
+        `Cannot change task ${id}: the panel would not say what state it is in`,
+      );
+    }
+    const current = items.find((task) => task.id === id);
+    if (!current) {
+      throw new AaPanelError('panel_error', `Scheduled task ${id} no longer exists on the panel`);
+    }
+    if (current.enabled === enabled) return 'already';
+
+    const raw = await this.post(
+      'v2/crontab?action=set_cron_status',
+      {id: String(id), if_stop: 'false'},
+      cronMutationResponse,
+    );
+    this.unwrapEnvelope(raw);
+    return 'changed';
+  }
+
+  /**
+   * Deletes a scheduled task.
+   *
+   * Irreversible on someone else's machine: the panel keeps no trash for these,
+   * and a deleted backup schedule is noticed the day the backup is wanted. The
+   * confirmation and the journal entry that go with it are the caller's job —
+   * see the action, where both live (Д-19).
+   */
+  async deleteCronTask(id: number): Promise<void> {
+    const raw = await this.post(
+      'v2/crontab?action=DelCrontab',
+      {id: String(id)},
+      cronMutationResponse,
+    );
+    this.unwrapEnvelope(raw);
   }
 
   /**

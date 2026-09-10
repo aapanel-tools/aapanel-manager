@@ -1886,6 +1886,106 @@ describe('AaPanelClient.getCronLogs', () => {
   });
 });
 
+describe('AaPanelClient cron mutations', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    resetGates();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const bodyOf = (call: number) =>
+    new URLSearchParams(String((fetchMock.mock.calls[call][1] as {body: string}).body));
+
+  it('runs a task by id', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {result: 'Crontab_task_exec'}}) as never,
+    );
+    await new AaPanelClient(cfg).runCronTask(4);
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v2/crontab?action=StartTask');
+    expect(bodyOf(0).get('id')).toBe('4');
+  });
+
+  it('judges success by the status, not by the panel’s wording', async () => {
+    // The panel says "Crontab_task_exec" for one action and a sentence in its
+    // own display language for another. Matching text would tie the fleet to
+    // whichever language one panel happens to be set to.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {result: 'Настройка успешно!'}}) as never,
+    );
+    await expect(new AaPanelClient(cfg).runCronTask(4)).resolves.toBeUndefined();
+  });
+
+  it('reports a refused run in the panel’s own words', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: 'Task does not exist'}) as never,
+    );
+    await expect(new AaPanelClient(cfg).runCronTask(999)).rejects.toThrow('Task does not exist');
+  });
+
+  it('deletes a task by id', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {result: 'Del_success'}}) as never,
+    );
+    await new AaPanelClient(cfg).deleteCronTask(3);
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v2/crontab?action=DelCrontab');
+    expect(bodyOf(0).get('id')).toBe('3');
+  });
+
+  it('reads the real state before toggling, because the panel offers no "set"', async () => {
+    // set_cron_status flips whatever is there. Acting on what a browser last
+    // saw would stop a client's backup on a screen that had gone stale — the
+    // local-cache invariant, in the one place where getting it wrong is silent.
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({status: 0, message: [{...FIXTURE_CRON_ROW, id: 5, status: 1}]}) as never,
+      )
+      .mockResolvedValueOnce(jsonResponse({status: 0, message: {result: 'ok'}}) as never);
+
+    const outcome = await new AaPanelClient(cfg).setCronTaskEnabled(5, false);
+
+    expect(outcome).toBe('changed');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('action=GetCrontab');
+    expect(String(fetchMock.mock.calls[1][0])).toContain('action=set_cron_status');
+    expect(bodyOf(1).get('id')).toBe('5');
+    // True would also kill the task if it happens to be running, and a backup
+    // cut off halfway is worse than one that finishes.
+    expect(bodyOf(1).get('if_stop')).toBe('false');
+  });
+
+  it('sends nothing when the panel is already in the requested state', async () => {
+    // Toggling here would produce the opposite of what was asked for.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: [{...FIXTURE_CRON_ROW, id: 5, status: 0}]}) as never,
+    );
+
+    const outcome = await new AaPanelClient(cfg).setCronTaskEnabled(5, false);
+
+    expect(outcome).toBe('already');
+    expect(fetchMock.mock.calls).toHaveLength(1);
+  });
+
+  it('refuses to toggle when the panel will not say what state it is in', async () => {
+    // Without the current state the call is a coin toss on someone's schedule.
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+
+    await expect(new AaPanelClient(cfg).setCronTaskEnabled(5, true)).rejects.toThrow(
+      /would not say what state/,
+    );
+    expect(fetchMock.mock.calls).toHaveLength(1);
+  });
+
+  it('refuses to toggle a task that is no longer there', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: []}) as never);
+
+    await expect(new AaPanelClient(cfg).setCronTaskEnabled(5, true)).rejects.toThrow(
+      /no longer exists/,
+    );
+    expect(fetchMock.mock.calls).toHaveLength(1);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Server-side search (Ф-14)
 // ---------------------------------------------------------------------------

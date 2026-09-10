@@ -227,6 +227,19 @@ export const siteLogsResponse = textResult;
 export const cronLogsResponse = textResult;
 
 /**
+ * Any of the scheduler's changing operations: run now, toggle, delete, create.
+ *
+ * The payload is deliberately left untyped. The only thing that means success
+ * here is `status === 0`: the panel's own word for it is a stable token for one
+ * action (`Del_success`) and a sentence in its display language for another
+ * ("Настройка успешно!"), so a schema that pinned the text down would tie the
+ * fleet to whichever language one panel is set to. Leaving `message` open also
+ * lets a refusal keep its wording, whatever shape it arrives in, instead of
+ * being reported as a shape mismatch.
+ */
+export const cronMutationResponse = envelope(z.unknown());
+
+/**
  * The scheduler's task list.
  *
  * `message` is the array itself, with no `data` wrapper and no pagination

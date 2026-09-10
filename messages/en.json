@@ -241,7 +241,26 @@
     "logSection": "Last run output",
     "logIsLastRunOnly": "The panel keeps only the most recent run: a clean output is not proof that the task succeeds every time.",
     "loading": "Loading…",
-    "logEmpty": "No output — the task has not run yet, or prints nothing."
+    "logEmpty": "No output — the task has not run yet, or prints nothing.",
+    "runNow": "Run now",
+    "stopTask": "Stop",
+    "startTask": "Enable",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "confirmTitle": "Confirm",
+    "confirmRun": "The task will run on the server immediately, outside its schedule. There is no calling it back.",
+    "confirmStop": "A stopped task no longer runs on its schedule — which is exactly how backups quietly cease.",
+    "confirmStart": "The task will run on its schedule again.",
+    "confirmDelete": "The task will be deleted from the panel. It cannot be restored there, only created again.",
+    "confirmDeleteLabel": "Type “{phrase}” to confirm",
+    "toastRan": "Task started",
+    "toastEnabled": "Task enabled",
+    "toastDisabled": "Task stopped",
+    "toastAlready": "The panel was already in that state — nothing was changed",
+    "toastDeleted": "Task deleted",
+    "errForbidden": "Not enough rights",
+    "errConfirm": "The confirmation did not match",
+    "errValidation": "The form data is not valid"
   },
   "listSearch": {
     "clear": "Clear search"

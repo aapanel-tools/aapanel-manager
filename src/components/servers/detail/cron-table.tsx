@@ -23,6 +23,8 @@ import {
 export interface CronTableProps {
   id: string;
   initial: CronListResult;
+  /** Whether the viewer may change anything; the task card hides its controls otherwise. */
+  isAdmin: boolean;
 }
 
 /**
@@ -33,17 +35,16 @@ export interface CronTableProps {
  * slice shows the two things that reveal that — whether a task is enabled, and
  * what its last run printed — before it offers to change anything.
  *
- * Running, stopping and deleting a task are deliberately absent rather than
- * unfinished. Each changes what happens on someone else's production machine at
- * a time nobody is watching, so each needs its own confirmation and its own
- * journal entry (§16), which is the next slice and not a button added to a
- * listing.
+ * Running, stopping and deleting a task are done from the task's card, not from
+ * a row here. The card is the only place the script is visible, and acting on a
+ * task without seeing what it runs is how a client's site goes down — so the
+ * extra click is the point of the design rather than a cost of it.
  *
- * The script itself is not a column. It belongs to the card, on request: backup
- * scripts on a hosting panel routinely carry a database password in plain text,
- * and a table puts every one of them on screen at once.
+ * The script itself is not a column, for the same reason it is behind a click:
+ * backup scripts on a hosting panel routinely carry a database password in
+ * plain text, and a table puts every one of them on screen at once.
  */
-export function CronTable({id, initial}: CronTableProps) {
+export function CronTable({id, initial, isAdmin}: CronTableProps) {
   const t = useTranslations('cron');
   const {result, search, setSearch, applied, pending, reload} = useSearchableList<CronListResult>(
     initial,
@@ -163,6 +164,12 @@ export function CronTable({id, initial}: CronTableProps) {
                 <CronTaskDialog
                   id={id}
                   task={task}
+                  isAdmin={isAdmin}
+                  // After anything changes, the list is re-read rather than
+                  // patched in place: the panel is the truth, and a row edited
+                  // locally to look right is a guess about someone else's
+                  // machine (§16).
+                  onDone={() => void reload()}
                   trigger={
                     <Button variant="ghost" size="sm">
                       {t('details')}

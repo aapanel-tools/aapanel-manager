@@ -89,8 +89,8 @@ function collectFieldErrors(issues: {path: PropertyKey[]; message: string}[]): R
 export async function getUpdateStatusAction(): Promise<UpdateStatusResult> {
   try {
     await requireAdmin();
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
 
   const current = getCurrentVersion();
@@ -148,8 +148,8 @@ export async function getUpdateStatusAction(): Promise<UpdateStatusResult> {
 export async function getUpdateSettingsAction(): Promise<UpdateSettingsDataResult> {
   try {
     await requireAdmin();
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
   const settings = await getUpdateSettings();
   return {ok: true, settings};
@@ -204,8 +204,8 @@ export async function stageUpdateAction(
   try {
     const user = await requireAdmin();
     userId = user.id;
-  } catch {
-    return {ok: false, error: 'forbidden'};
+  } catch (e) {
+    return {ok: false, error: e instanceof AuthError ? e.code : 'forbidden'};
   }
 
   const env = parseEnv();
@@ -291,8 +291,8 @@ export async function activateUpdateAction(): Promise<ActivateActionResult> {
   let userId: string;
   try {
     userId = (await requireAdmin()).id;
-  } catch {
-    return {ok: false, error: 'forbidden'};
+  } catch (e) {
+    return {ok: false, error: e instanceof AuthError ? e.code : 'forbidden'};
   }
 
   const prep = await prepareSelfRestart();
@@ -324,8 +324,8 @@ export async function rollbackUpdateAction(toVersion: string): Promise<ActivateA
   let userId: string;
   try {
     userId = (await requireAdmin()).id;
-  } catch {
-    return {ok: false, error: 'forbidden'};
+  } catch (e) {
+    return {ok: false, error: e instanceof AuthError ? e.code : 'forbidden'};
   }
 
   const target = toVersion.trim().replace(/^v/, '');
@@ -391,8 +391,8 @@ export async function gitUpdateAction(): Promise<GitDeployActionResult> {
   let userId: string;
   try {
     userId = (await requireAdmin()).id;
-  } catch {
-    return {ok: false, error: 'forbidden'};
+  } catch (e) {
+    return {ok: false, error: e instanceof AuthError ? e.code : 'forbidden'};
   }
   try {
     const cfg = await getGithubConfig();
@@ -417,8 +417,8 @@ export async function gitRollbackAction(toVersion: string): Promise<GitDeployAct
   let userId: string;
   try {
     userId = (await requireAdmin()).id;
-  } catch {
-    return {ok: false, error: 'forbidden'};
+  } catch (e) {
+    return {ok: false, error: e instanceof AuthError ? e.code : 'forbidden'};
   }
   const target = toVersion.trim().replace(/^v/, '');
   if (!target) return {ok: false, error: 'no-target'};
@@ -445,8 +445,8 @@ export type UpdateProgressResult =
 export async function getUpdateProgressAction(): Promise<UpdateProgressResult> {
   try {
     await requireAdmin();
-  } catch {
-    return {ok: false, error: 'forbidden'};
+  } catch (e) {
+    return {ok: false, error: e instanceof AuthError ? e.code : 'forbidden'};
   }
   const repoRoot = await gitRepoRoot(process.cwd());
   if (!repoRoot) return {ok: true, status: null};

@@ -83,8 +83,8 @@ export async function cancelJobAction(jobId: string): Promise<SimpleJobResult> {
   let userId: string;
   try {
     userId = (await requireAdmin()).id;
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
   if (!jobId) return {ok: false, message: 'missing id'};
 

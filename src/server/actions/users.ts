@@ -58,8 +58,8 @@ export async function listUsersAction(): Promise<UsersListResult> {
   let actor: SessionUser;
   try {
     actor = await requireAdmin();
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
   try {
     const rows = await prisma.user.findMany({

@@ -139,8 +139,8 @@ export async function deleteServerAction(formData: FormData): Promise<SimpleResu
   let user: SessionUser;
   try {
     user = await requireAdmin();
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
   const parsed = serverDeleteSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return {ok: false, message: 'validation'};
@@ -184,8 +184,8 @@ export async function deleteServerAction(formData: FormData): Promise<SimpleResu
 export async function testConnectionAction(formData: FormData): Promise<SimpleResult> {
   try {
     await requireAdmin();
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
   const parsed = testConnectionSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return {ok: false, message: 'validation'};
@@ -236,8 +236,8 @@ export async function testConnectionAction(formData: FormData): Promise<SimpleRe
 export async function inspectCertificateAction(formData: FormData): Promise<CertificateInspectResult> {
   try {
     await requireAdmin();
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
   const parsed = certificateInspectSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return {ok: false, message: 'validation'};

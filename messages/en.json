@@ -378,7 +378,7 @@
     "withServer": "{server}: {message}"
   },
   "actionError": {
-    "unauthenticated": "You are not signed in",
+    "unauthenticated": "Your session has ended — sign in again",
     "forbidden": "Not enough rights: administrators only",
     "validation": "The form is not filled in correctly — check the fields",
     "confirm": "The confirmation did not match",

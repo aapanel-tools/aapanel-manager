@@ -201,8 +201,8 @@ export async function getProjectEditDataAction(
 ): Promise<ProjectEditDataResult> {
   try {
     await requireAdmin();
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
   try {
     const creds = await loadServerCreds(serverId);
@@ -225,8 +225,8 @@ export async function getProjectEditDataAction(
 export async function getProjectCreateEnvAction(serverId: string): Promise<ProjectCreateEnvResult> {
   try {
     await requireAdmin();
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
   try {
     const creds = await loadServerCreds(serverId);
@@ -243,8 +243,8 @@ export async function getProjectCreateEnvAction(serverId: string): Promise<Proje
 export async function getRunListAction(serverId: string, projectCwd: string): Promise<RunListResult> {
   try {
     await requireAdmin();
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
   if (!projectCwd.trim()) return {ok: false, message: 'empty path'};
   try {
@@ -373,8 +373,8 @@ export async function deleteProjectAction(serverId: string, formData: FormData):
 export async function listDirAction(serverId: string, path: string): Promise<ListDirResult> {
   try {
     await requireAdmin();
-  } catch {
-    return {ok: false, message: 'forbidden'};
+  } catch (e) {
+    return {ok: false, message: e instanceof AuthError ? e.code : 'forbidden'};
   }
   const target = path.trim() || '/';
   try {

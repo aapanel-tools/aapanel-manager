@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {useFieldError} from '@/components/use-field-error';
 import {toast} from 'sonner';
 import {createUserAction, type UserMutResult} from '@/server/actions/users';
+import {callAction, asError} from '@/components/call-action';
 import {USER_ROLES} from '@/lib/validation/user';
 import {KNOWN_USER_ERRORS} from '@/components/users/errors';
 import {useActionError} from '@/components/use-action-error';
@@ -47,7 +48,7 @@ export function UserFormDialog({trigger, onDone}: {trigger: React.ReactElement; 
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     start(async () => {
-      const res = await createUserAction(fd);
+      const res = await callAction(() => createUserAction(fd), asError);
       setResult(res);
       if (res.ok) {
         toast.success(t('createdToast'));

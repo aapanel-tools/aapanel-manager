@@ -26,7 +26,14 @@ export type ActionErrorCode =
   /** The action came apart for an unforeseen reason; the details are in the log. */
   | 'failed'
   /** The thing being acted on is not there any more. */
-  | 'notFound';
+  | 'notFound'
+  /**
+   * The call never reached an action: the server runs a build without it.
+   * Not returned by any action — `callAction` makes it from the exception (ADR-0010).
+   */
+  | 'outdated'
+  /** The call never reached the app at all. Made by `callAction`, like `outdated`. */
+  | 'unreachable';
 
 const CODES: ReadonlySet<string> = new Set<ActionErrorCode>([
   'unauthenticated',
@@ -36,6 +43,8 @@ const CODES: ReadonlySet<string> = new Set<ActionErrorCode>([
   'invalid',
   'failed',
   'notFound',
+  'outdated',
+  'unreachable',
 ]);
 
 /**
@@ -101,7 +110,8 @@ export function useActionError(): (raw: string, fallback?: string) => string {
 
   return useCallback(
     (raw: string, fallback?: string): string => {
-      switch (actionErrorCode(raw)) {
+      const code = actionErrorCode(raw);
+      switch (code) {
         case 'unauthenticated':
           return t('unauthenticated');
         case 'forbidden':
@@ -116,8 +126,18 @@ export function useActionError(): (raw: string, fallback?: string) => string {
           return t('failed');
         case 'notFound':
           return t('notFound');
-        default:
+        case 'outdated':
+          return t('outdated');
+        case 'unreachable':
+          return t('unreachable');
+        case null:
           return fallback ?? raw;
+        default: {
+          // A code without a case above is a type error here, not a raw token
+          // on someone's screen: every code added to the set must be worded.
+          const unworded: never = code;
+          return unworded;
+        }
       }
     },
     [t],

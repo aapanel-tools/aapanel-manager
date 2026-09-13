@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {deleteDatabaseAction} from '@/server/actions/databases';
+import {callAction, asError} from '@/components/call-action';
 import type {Database} from '@/lib/aapanel';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -47,7 +48,7 @@ export function DatabaseDeleteDialog({id, database, trigger, onDone}: DatabaseDe
     fd.set('name', database.name);
     fd.set('confirm', confirmValue);
     start(async () => {
-      const res = await deleteDatabaseAction(id, fd);
+      const res = await callAction(() => deleteDatabaseAction(id, fd), asError);
       if (res.ok) {
         toast.success(t('deleted'));
         setOpen(false);

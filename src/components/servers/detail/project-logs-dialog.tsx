@@ -4,6 +4,7 @@ import {useCallback, useEffect, useRef, useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {RefreshCw} from 'lucide-react';
 import {getProjectLogsAction} from '@/server/actions/projects';
+import {callAction, asMessage} from '@/components/call-action';
 import {useActionError} from '@/components/use-action-error';
 import {Button} from '@/components/ui/button';
 import {Label} from '@/components/ui/label';
@@ -63,7 +64,7 @@ export function ProjectLogsDialog({id, project, trigger}: ProjectLogsDialogProps
     const reqId = (reqIdRef.current += 1);
     inFlightRef.current = true;
     try {
-      const res = await getProjectLogsAction(id, project);
+      const res = await callAction(() => getProjectLogsAction(id, project), asMessage);
       if (!mountedRef.current || reqId !== reqIdRef.current) return;
       if (res.ok) {
         setLogs(res.logs);

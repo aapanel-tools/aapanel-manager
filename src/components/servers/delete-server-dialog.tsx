@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {deleteServerAction} from '@/server/actions/servers';
+import {callAction, asMessage} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -52,7 +53,7 @@ export function DeleteServerDialog({server, trigger}: DeleteServerDialogProps) {
     fd.set('id', server.id);
     fd.set('confirm', confirmValue);
     start(async () => {
-      const res = await deleteServerAction(fd);
+      const res = await callAction(() => deleteServerAction(fd), asMessage);
       if (res.ok) {
         toast.success(t('deleted'));
         setOpen(false);

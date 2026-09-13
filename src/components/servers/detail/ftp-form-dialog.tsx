@@ -6,6 +6,7 @@ import {useFieldError} from '@/components/use-field-error';
 import {toast} from 'sonner';
 import {createFtpUserAction} from '@/server/actions/ftp';
 import type {FtpMutResult} from '@/server/actions/ftp';
+import {callAction, asError} from '@/components/call-action';
 import {useActionError} from '@/components/use-action-error';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -57,7 +58,7 @@ export function FtpFormDialog({id, trigger, onDone}: FtpFormDialogProps) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     startSubmit(async () => {
-      const res = await createFtpUserAction(id, fd);
+      const res = await callAction(() => createFtpUserAction(id, fd), asError);
       setResult(res);
       if (res.ok) {
         toast.success(t('created'));

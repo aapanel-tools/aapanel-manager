@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {RefreshCw, Trash2, PlusCircle} from 'lucide-react';
 import type {DbListResult} from '@/server/actions/databases';
 import {listDatabasesAction} from '@/server/actions/databases';
+import {callAction, asMessage} from '@/components/call-action';
 import type {Database, DbEngine} from '@/lib/aapanel';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
@@ -38,7 +39,7 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
   // the panel looks through, the other hides half of what it returned.
   const {result, search, setSearch, applied, pending, reload} = useSearchableList<DbListResult>(
     initial,
-    (term) => listDatabasesAction(id, term),
+    (term) => callAction(() => listDatabasesAction(id, term), asMessage),
   );
   const [engineFilter, setEngineFilter] = useState<EngineFilter>('all');
 

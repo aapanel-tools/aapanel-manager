@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {RefreshCw, ShieldAlert} from 'lucide-react';
 import type {FirewallOverviewResult, FirewallRulesResult} from '@/server/actions/firewall';
 import {getFirewallOverviewAction, listFirewallRulesAction} from '@/server/actions/firewall';
+import {callAction, asMessage} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {Separator} from '@/components/ui/separator';
@@ -47,12 +48,12 @@ export function FirewallSection({id, initialOverview, initialRules}: FirewallSec
 
   const {result, search, setSearch, applied, pending, reload} =
     useSearchableList<FirewallRulesResult>(initialRules, (term) =>
-      listFirewallRulesAction(id, term),
+      callAction(() => listFirewallRulesAction(id, term), asMessage),
     );
 
   function refreshAll() {
     startOverview(async () => {
-      setOverview(await getFirewallOverviewAction(id));
+      setOverview(await callAction(() => getFirewallOverviewAction(id), asMessage));
     });
     void reload();
   }

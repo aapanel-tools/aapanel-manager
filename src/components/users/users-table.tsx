@@ -4,6 +4,7 @@ import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {ShieldCheck, Eye, Pencil, Trash2, PlusCircle} from 'lucide-react';
 import {listUsersAction, type UsersListResult} from '@/server/actions/users';
+import {callAction, asMessage} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
@@ -20,7 +21,7 @@ export function UsersTable({initial}: {initial: UsersListResult}) {
 
   function refetch() {
     startTransition(async () => {
-      setResult(await listUsersAction());
+      setResult(await callAction(() => listUsersAction(), asMessage));
     });
   }
 

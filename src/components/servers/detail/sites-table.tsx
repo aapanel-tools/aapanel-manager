@@ -4,6 +4,7 @@ import {useTranslations} from 'next-intl';
 import {RefreshCw, ShieldCheck, ShieldOff} from 'lucide-react';
 import type {SiteListResult} from '@/server/actions/sites';
 import {listSitesAction} from '@/server/actions/sites';
+import {callAction, asMessage} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
 import {ListSearch} from '@/components/servers/detail/list-search';
@@ -40,7 +41,7 @@ export function SitesTable({id, initial}: SitesTableProps) {
   // being looked for may be one of the rows past the row limit (Д-16).
   const {result, search, setSearch, applied, pending, reload} = useSearchableList<SiteListResult>(
     initial,
-    (term) => listSitesAction(id, term),
+    (term) => callAction(() => listSitesAction(id, term), asMessage),
   );
 
   const header = (

@@ -10,6 +10,7 @@ import {
   setFtpUserEnabledAction,
   deleteFtpUserAction,
 } from '@/server/actions/ftp';
+import {callAction, asError} from '@/components/call-action';
 import {useActionError} from '@/components/use-action-error';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
@@ -74,7 +75,7 @@ export function FtpUserDialog({id, user, isAdmin, trigger, onDone}: FtpUserDialo
     fd.set('username', user.name);
     fd.set('enabled', user.enabled ? 'false' : 'true');
     startWork(async () => {
-      const res = await setFtpUserEnabledAction(id, fd);
+      const res = await callAction(() => setFtpUserEnabledAction(id, fd), asError);
       if (res.ok) {
         toast.success(user.enabled ? t('toastDisabled') : t('toastEnabled'));
         reset();
@@ -91,7 +92,7 @@ export function FtpUserDialog({id, user, isAdmin, trigger, onDone}: FtpUserDialo
     fd.set('username', user.name);
     fd.set('password', password);
     startWork(async () => {
-      const res = await setFtpUserPasswordAction(id, fd);
+      const res = await callAction(() => setFtpUserPasswordAction(id, fd), asError);
       if (res.ok) {
         toast.success(t('toastPassword'));
         reset();
@@ -110,7 +111,7 @@ export function FtpUserDialog({id, user, isAdmin, trigger, onDone}: FtpUserDialo
     fd.set('username', user.name);
     fd.set('confirm', confirmValue);
     startWork(async () => {
-      const res = await deleteFtpUserAction(id, fd);
+      const res = await callAction(() => deleteFtpUserAction(id, fd), asError);
       if (res.ok) {
         toast.success(t('toastDeleted'));
         setOpen(false);

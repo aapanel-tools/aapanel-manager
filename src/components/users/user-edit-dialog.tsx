@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {useFieldError} from '@/components/use-field-error';
 import {toast} from 'sonner';
 import {updateUserAction, type UserMutResult, type UserView} from '@/server/actions/users';
+import {callAction, asError} from '@/components/call-action';
 import {USER_ROLES, type UserRole} from '@/lib/validation/user';
 import {KNOWN_USER_ERRORS} from '@/components/users/errors';
 import {useActionError} from '@/components/use-action-error';
@@ -63,7 +64,7 @@ export function UserEditDialog({user, trigger, onDone}: UserEditDialogProps) {
     fd.set('role', role);
     fd.set('password', password);
     start(async () => {
-      const res = await updateUserAction(fd);
+      const res = await callAction(() => updateUserAction(fd), asError);
       setResult(res);
       if (res.ok) {
         toast.success(t('updatedToast'));

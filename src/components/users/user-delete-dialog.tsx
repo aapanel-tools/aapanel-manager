@@ -4,6 +4,7 @@ import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {toast} from 'sonner';
 import {deleteUserAction, type UserView} from '@/server/actions/users';
+import {callAction, asError} from '@/components/call-action';
 import {KNOWN_USER_ERRORS} from '@/components/users/errors';
 import {useActionError} from '@/components/use-action-error';
 import {Button} from '@/components/ui/button';
@@ -48,7 +49,7 @@ export function UserDeleteDialog({user, trigger, onDone}: UserDeleteDialogProps)
     fd.set('id', user.id);
     fd.set('confirm', confirm);
     start(async () => {
-      const res = await deleteUserAction(fd);
+      const res = await callAction(() => deleteUserAction(fd), asError);
       if (res.ok) {
         toast.success(t('deletedToast'));
         setOpen(false);

@@ -4,6 +4,7 @@ import {useTranslations} from 'next-intl';
 import {Plus, RefreshCw} from 'lucide-react';
 import type {FtpListResult} from '@/server/actions/ftp';
 import {listFtpUsersAction} from '@/server/actions/ftp';
+import {callAction, asMessage} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
@@ -40,7 +41,7 @@ export function FtpTable({id, initial, isAdmin}: FtpTableProps) {
   const t = useTranslations('ftp');
   const {result, search, setSearch, applied, pending, reload} = useSearchableList<FtpListResult>(
     initial,
-    (term) => listFtpUsersAction(id, term),
+    (term) => callAction(() => listFtpUsersAction(id, term), asMessage),
   );
 
   const header = (

@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {RefreshCw, ShieldCheck, ShieldOff} from 'lucide-react';
 import type {Site, SiteDetail} from '@/lib/aapanel';
 import {getSiteDetailAction, getSiteLogsAction} from '@/server/actions/sites';
+import {callAction, asMessage} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {Separator} from '@/components/ui/separator';
@@ -53,7 +54,7 @@ export function SiteDetailDialog({id, site, trigger}: SiteDetailDialogProps) {
 
   function load() {
     startTransition(async () => {
-      const res = await getSiteDetailAction(id, {id: site.id, name: site.name, path: site.path});
+      const res = await callAction(() => getSiteDetailAction(id, {id: site.id, name: site.name, path: site.path}), asMessage);
       if (res.ok) {
         setDetail(res.detail);
         setError(null);
@@ -66,7 +67,7 @@ export function SiteDetailDialog({id, site, trigger}: SiteDetailDialogProps) {
 
   function loadLogs() {
     startLogsTransition(async () => {
-      const res = await getSiteLogsAction(id, site.name);
+      const res = await callAction(() => getSiteLogsAction(id, site.name), asMessage);
       if (res.ok) {
         setLogs(res.logs);
         setLogsError(null);

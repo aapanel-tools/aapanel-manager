@@ -7,6 +7,7 @@ import {toast} from 'sonner';
 import {FileText, Play, Square, RotateCcw, RefreshCw, Pencil, Trash2, PlusCircle} from 'lucide-react';
 import type {ProjectsResult} from '@/server/actions/projects';
 import {listNodeProjectsAction, projectControlAction} from '@/server/actions/projects';
+import {callAction, asMessage} from '@/components/call-action';
 import type {ProjectOperation} from '@/lib/aapanel';
 import {Button} from '@/components/ui/button';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
@@ -50,7 +51,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   // through one place, which is also what keeps a slow answer from painting
   // over a newer one.
   const {result, search, setSearch, applied, pending, reload, reloadIfIdle} =
-    useSearchableList<ProjectsResult>(initial, (term) => listNodeProjectsAction(id, term));
+    useSearchableList<ProjectsResult>(initial, (term) => callAction(() => listNodeProjectsAction(id, term), asMessage));
 
   // Deliberately separate from the list's own pending flag. Starting or
   // stopping a project must grey out that row's buttons; a poll landing every
@@ -73,7 +74,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
 
   function runOp(name: string, op: ProjectOperation) {
     startTransition(async () => {
-      const res = await projectControlAction(id, name, op);
+      const res = await callAction(() => projectControlAction(id, name, op), asMessage);
       if (res.ok) {
         toast.success(t(OP_TOAST_KEY[op]));
         await reload();

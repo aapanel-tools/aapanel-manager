@@ -6,6 +6,7 @@ import {toast} from 'sonner';
 import {Layers, Plus, RefreshCw} from 'lucide-react';
 import type {ServerListParams} from '@/lib/validation/server';
 import {refreshVisibleStatusesAction} from '@/server/actions/servers';
+import {callAction} from '@/components/call-action';
 import {BulkProjectDialog} from '@/components/jobs/bulk-project-dialog';
 import {ServerFormDialog} from './server-form-dialog';
 import {Button} from '@/components/ui/button';
@@ -58,7 +59,12 @@ export function ServersToolbar({params, isAdmin, visible}: ServersToolbarProps) 
   function onRefreshVisible() {
     if (visibleIds.length === 0) return;
     startTransition(async () => {
-      const res = await refreshVisibleStatusesAction(visibleIds);
+      // This action answers with counts rather than a refusal; a call that
+      // failed refreshed nothing, which the toolbar already has a phrase for.
+      const res = await callAction(
+        () => refreshVisibleStatusesAction(visibleIds),
+        () => ({ok: false, refreshed: 0, failed: visibleIds.length}),
+      );
       if (res.ok) toast.success(t('refreshedN', {n: res.refreshed, failed: res.failed}));
       else toast.error(t('refreshFailed'));
       router.refresh();

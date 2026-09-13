@@ -4,6 +4,7 @@ import {useTranslations} from 'next-intl';
 import {RefreshCw} from 'lucide-react';
 import type {CronListResult} from '@/server/actions/cron';
 import {listCronTasksAction} from '@/server/actions/cron';
+import {callAction, asMessage} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
@@ -49,7 +50,7 @@ export function CronTable({id, initial, isAdmin}: CronTableProps) {
   const t = useTranslations('cron');
   const {result, search, setSearch, applied, pending, reload} = useSearchableList<CronListResult>(
     initial,
-    (term) => listCronTasksAction(id, term),
+    (term) => callAction(() => listCronTasksAction(id, term), asMessage),
   );
 
   const header = (

@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {toast} from 'sonner';
 import {RefreshCw, Copy, ExternalLink, ArrowUpCircle, CheckCircle2} from 'lucide-react';
 import {getUpdateStatusAction, type UpdateStatusResult} from '@/server/actions/updates';
+import {callAction, asMessage} from '@/components/call-action';
 import {
   Card,
   CardHeader,
@@ -31,7 +32,7 @@ export function UpdateStatusCard({initial}: {initial: UpdateStatusResult}) {
 
   function refresh() {
     start(async () => {
-      setStatus(await getUpdateStatusAction());
+      setStatus(await callAction(() => getUpdateStatusAction(), asMessage));
     });
   }
 

@@ -14,6 +14,7 @@ import {
   type ActionState,
   type CertificateView,
 } from '@/server/actions/servers';
+import {callAction, asError, asMessage} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -46,7 +47,6 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
   // An action refuses for its own reasons too — wrong role, a form that did
   // not validate — and those arrived as bare English tokens (Д-23).
   const actionError = useActionError();
-  const action = mode === 'create' ? createServerAction : updateServerAction;
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState((server?.tlsMode ?? 'PINNED') === 'PINNED');
   const [pin, setPin] = useState(server?.tlsPinSha256 ? groupHex(server.tlsPinSha256) : '');
@@ -58,11 +58,16 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
 
   // Call the action directly (no useActionState) so success handling lives in a
   // transition callback, not an effect — avoids set-state-in-effect cascades.
+  // Each action is named where it is called, inside callAction, rather than
+  // picked into a variable first: a call made through a variable is one the
+  // test on callAction cannot see (ADR-0010).
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     startSubmit(async () => {
-      const res = await action(INITIAL, fd);
+      const res = await (mode === 'create'
+        ? callAction(() => createServerAction(INITIAL, fd), asError)
+        : callAction(() => updateServerAction(INITIAL, fd), asError));
       setResult(res);
       if (res.ok) {
         toast.success(t(res.message ?? 'saved'));
@@ -89,7 +94,7 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
     if (!form) return;
     const fd = new FormData(form);
     startInspect(async () => {
-      const res = await inspectCertificateAction(fd);
+      const res = await callAction(() => inspectCertificateAction(fd), asMessage);
       if (res.ok) {
         setCert(res.certificate);
       } else {
@@ -103,7 +108,7 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
     if (!form) return;
     const fd = new FormData(form);
     startTest(async () => {
-      const res = await testConnectionAction(fd);
+      const res = await callAction(() => testConnectionAction(fd), asMessage);
       if (!res.ok) {
         toast.error(actionError(res.message));
         return;

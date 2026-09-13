@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {useFieldError} from '@/components/use-field-error';
 import {toast} from 'sonner';
 import {changeOwnPasswordAction, type UserMutResult} from '@/server/actions/users';
+import {callAction, asError} from '@/components/call-action';
 import {KNOWN_USER_ERRORS} from '@/components/users/errors';
 import {useActionError} from '@/components/use-action-error';
 import {Button} from '@/components/ui/button';
@@ -39,7 +40,7 @@ export function ChangeOwnPasswordCard() {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     start(async () => {
-      const res = await changeOwnPasswordAction(fd);
+      const res = await callAction(() => changeOwnPasswordAction(fd), asError);
       setResult(res);
       if (res.ok) {
         toast.success(t('passwordChangedToast'));

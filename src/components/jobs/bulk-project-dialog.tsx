@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {createProjectControlJobAction} from '@/server/actions/jobs';
+import {callAction, asError} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -77,7 +78,7 @@ export function BulkProjectDialog({servers, trigger}: BulkProjectDialogProps) {
     for (const s of chosen) fd.append('serverIds', s.id);
 
     start(async () => {
-      const res = await createProjectControlJobAction(fd);
+      const res = await callAction(() => createProjectControlJobAction(fd), asError);
       if (res.ok) {
         toast.success(t('queued'));
         reset(false);

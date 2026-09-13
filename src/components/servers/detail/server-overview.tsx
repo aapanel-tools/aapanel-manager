@@ -6,6 +6,7 @@ import {Button} from '@/components/ui/button';
 import {MetricBar} from './metric-bar';
 import {getServerMetricsAction} from '@/server/actions/projects';
 import type {MetricsResult} from '@/server/actions/projects';
+import {callAction, asMessage} from '@/components/call-action';
 import type {ServerMetrics} from '@/lib/aapanel';
 import {useActionError} from '@/components/use-action-error';
 
@@ -54,7 +55,7 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
 
       inFlightRef.current = true;
       try {
-        const next = await getServerMetricsAction(id);
+        const next = await callAction(() => getServerMetricsAction(id), asMessage);
         if (mountedRef.current) {
           setResult(next);
           setLastUpdated(new Date());
@@ -77,7 +78,7 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     try {
-      const next = await getServerMetricsAction(id);
+      const next = await callAction(() => getServerMetricsAction(id), asMessage);
       if (!mountedRef.current) return;
       setResult(next);
       setLastUpdated(new Date());

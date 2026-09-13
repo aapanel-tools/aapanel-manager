@@ -386,7 +386,22 @@
     "confirm": "The confirmation did not match",
     "invalid": "The app asked for something it does not support — reload the page",
     "failed": "The action did not go through; details are in the application log",
-    "notFound": "Not found — it may have been deleted already"
+    "notFound": "Not found — it may have been deleted already",
+    "outdated": "The app has been updated — reload the page to continue",
+    "unreachable": "Cannot reach the app — check the connection and try again"
+  },
+  "routeError": {
+    "title": "This section could not be shown",
+    "failed": "Something went wrong; details are in the application log",
+    "retry": "Try again",
+    "reload": "Reload the page"
+  },
+  "notices": {
+    "outdated": "The app has been updated. Reload the page — until then its buttons will not work.",
+    "reload": "Reload the page",
+    "sessionEnded": "Your session has ended. Sign in in a new tab — what you typed on this page will stay — then repeat the action.",
+    "signIn": "Sign in in a new tab",
+    "dismiss": "Hide"
   },
   "fieldError": {
     "required": "Fill in this field",

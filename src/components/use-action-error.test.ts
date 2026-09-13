@@ -17,7 +17,7 @@ import {actionErrorCode, isActionErrorCode} from './use-action-error';
 
 describe('actionErrorCode', () => {
   it('recognises the codes actions actually return', () => {
-    for (const code of ['unauthenticated', 'forbidden', 'validation', 'confirm', 'invalid', 'failed', 'notFound']) {
+    for (const code of ['unauthenticated', 'forbidden', 'validation', 'confirm', 'invalid', 'failed', 'notFound', 'outdated', 'unreachable']) {
       expect(actionErrorCode(code)).toBe(code);
       expect(isActionErrorCode(code)).toBe(true);
     }
@@ -49,7 +49,7 @@ describe('actionErrorCode', () => {
 });
 
 describe('the shared refusal vocabulary', () => {
-  const CODES = ['unauthenticated', 'forbidden', 'validation', 'confirm', 'invalid', 'failed', 'notFound'];
+  const CODES = ['unauthenticated', 'forbidden', 'validation', 'confirm', 'invalid', 'failed', 'notFound', 'outdated', 'unreachable'];
 
   it('has a phrase for every code, in both languages', () => {
     for (const code of CODES) {

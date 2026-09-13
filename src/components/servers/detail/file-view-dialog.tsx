@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {RefreshCw} from 'lucide-react';
 import type {FileReadResult} from '@/server/actions/files';
 import {readFileAction} from '@/server/actions/files';
+import {callAction, asMessage} from '@/components/call-action';
 import {printableName} from '@/lib/files/paths';
 import {cn} from '@/lib/utils';
 import {useActionError} from '@/components/use-action-error';
@@ -55,7 +56,7 @@ export function FileViewDialog({id, serverName, path, name, trigger}: FileViewDi
   function load() {
     const token = ++request.current;
     startLoad(async () => {
-      const res = await readFileAction(id, path);
+      const res = await callAction(() => readFileAction(id, path), asMessage);
       if (request.current === token) setResult(res);
     });
   }

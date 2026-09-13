@@ -4,6 +4,7 @@ import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {Folder, ArrowUp, Loader2} from 'lucide-react';
 import {listDirAction} from '@/server/actions/projects';
+import {callAction, asMessage} from '@/components/call-action';
 import {useActionError} from '@/components/use-action-error';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -63,7 +64,7 @@ export function DirectoryPickerDialog({serverId, initialPath, trigger, onSelect}
 
   function load(path: string) {
     startLoad(async () => {
-      const res = await listDirAction(serverId, path);
+      const res = await callAction(() => listDirAction(serverId, path), asMessage);
       if (res.ok) {
         setCurrentPath(res.path);
         setDirs(res.dirs);

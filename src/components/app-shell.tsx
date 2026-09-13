@@ -4,6 +4,7 @@ import {getTranslations} from 'next-intl/server';
 import {signOut} from '@/auth';
 import {Button} from '@/components/ui/button';
 import {ThemeToggle} from '@/components/theme-toggle';
+import {AppNotices} from '@/components/app-notices';
 
 export async function AppShell({children, isAdmin = false}: {children: React.ReactNode; isAdmin?: boolean}) {
   const t = await getTranslations('nav');
@@ -34,6 +35,7 @@ export async function AppShell({children, isAdmin = false}: {children: React.Rea
           </form>
         </div>
       </header>
+      <AppNotices />
       <main className="p-4">{children}</main>
     </div>
   );

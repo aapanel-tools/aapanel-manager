@@ -11,6 +11,7 @@ import {
   setCronTaskEnabledAction,
   deleteCronTaskAction,
 } from '@/server/actions/cron';
+import {callAction, asError, asMessage} from '@/components/call-action';
 import {cronConfirmPhrase} from '@/lib/validation/cron';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
@@ -79,7 +80,7 @@ export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDia
 
   function loadLogs() {
     startLogs(async () => {
-      const res = await getCronLogsAction(id, task.id);
+      const res = await callAction(() => getCronLogsAction(id, task.id), asMessage);
       if (res.ok) {
         setLogs(res.logs);
         setLogsError(null);
@@ -105,7 +106,7 @@ export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDia
     fd.set('id', String(task.id));
     fd.set('name', task.name);
     startWork(async () => {
-      const res = await runCronTaskAction(id, fd);
+      const res = await callAction(() => runCronTaskAction(id, fd), asError);
       if (res.ok) {
         toast.success(t('toastRan'));
         setPendingOp(null);
@@ -126,7 +127,7 @@ export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDia
     fd.set('name', task.name);
     fd.set('enabled', task.enabled ? 'false' : 'true');
     startWork(async () => {
-      const res = await setCronTaskEnabledAction(id, fd);
+      const res = await callAction(() => setCronTaskEnabledAction(id, fd), asError);
       if (res.ok) {
         // `already` means the panel was found in the requested state and
         // nothing was sent — worth saying, because it means this screen and
@@ -152,7 +153,7 @@ export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDia
     fd.set('name', task.name);
     fd.set('confirm', confirmValue);
     startWork(async () => {
-      const res = await deleteCronTaskAction(id, fd);
+      const res = await callAction(() => deleteCronTaskAction(id, fd), asError);
       if (res.ok) {
         toast.success(t('toastDeleted'));
         setOpen(false);

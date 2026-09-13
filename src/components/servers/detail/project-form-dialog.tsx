@@ -15,6 +15,7 @@ import {
   getRunListAction,
   type ProjectMutResult,
 } from '@/server/actions/projects';
+import {callAction, asError, asMessage} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -108,7 +109,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
     setLoadError(null);
     startLoad(async () => {
       if (mode === 'edit' && projectName) {
-        const res = await getProjectEditDataAction(serverId, projectName);
+        const res = await callAction(() => getProjectEditDataAction(serverId, projectName), asMessage);
         if (!res.ok) {
           setLoadError(actionError(res.message));
           return;
@@ -132,7 +133,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
         setNodeVersions(versions);
         setPowerOn(res.config.powerOn);
       } else {
-        const res = await getProjectCreateEnvAction(serverId);
+        const res = await callAction(() => getProjectCreateEnvAction(serverId), asMessage);
         if (!res.ok) {
           setLoadError(actionError(res.message));
           return;
@@ -157,7 +158,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
     if (!path) return;
     setScriptsError(null);
     startScriptsLoad(async () => {
-      const res = await getRunListAction(serverId, path);
+      const res = await callAction(() => getRunListAction(serverId, path), asMessage);
       if (res.ok) {
         setRunScripts(res.scripts);
         setScript(res.scripts[0]?.key ?? '');
@@ -178,9 +179,13 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const action = mode === 'create' ? createProjectAction : modifyProjectAction;
     startSubmit(async () => {
-      const res = await action(serverId, fd);
+      // Named where it is called, inside callAction, rather than picked into a
+      // variable first — a call made through a variable is one the test on
+      // callAction cannot see (ADR-0010).
+      const res = await (mode === 'create'
+        ? callAction(() => createProjectAction(serverId, fd), asError)
+        : callAction(() => modifyProjectAction(serverId, fd), asError));
       setResult(res);
       if (res.ok) {
         toast.success(t(res.message ?? 'saved'));

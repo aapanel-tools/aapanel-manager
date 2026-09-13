@@ -20,6 +20,7 @@ import type {ServerRow} from '@/lib/servers/query';
 import type {ServerListParams} from '@/lib/validation/server';
 import {cycleSort, type ServerSortField} from '@/lib/servers/sort';
 import {refreshServerStatusAction} from '@/server/actions/servers';
+import {callAction, asMessage} from '@/components/call-action';
 import {buildColumns} from './columns';
 import {ServerFormDialog} from './server-form-dialog';
 import {DeleteServerDialog} from './delete-server-dialog';
@@ -102,7 +103,7 @@ export function ServersTable({data, total, params, isAdmin}: ServersTableProps) 
   const onRefreshRow = useCallback(
     (id: string) => {
       startTransition(async () => {
-        const res = await refreshServerStatusAction(id);
+        const res = await callAction(() => refreshServerStatusAction(id), asMessage);
         if (res.ok) {
           toast.success(t('refreshed'));
           router.refresh();

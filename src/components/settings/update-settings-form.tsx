@@ -7,6 +7,7 @@ import {useFieldError} from '@/components/use-field-error';
 import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {saveUpdateSettingsAction, type SaveSettingsResult} from '@/server/actions/updates';
+import {callAction, asError} from '@/components/call-action';
 import type {UpdateSettingsView, DeploymentMode} from '@/lib/version/types';
 import {Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter} from '@/components/ui/card';
 import {Button} from '@/components/ui/button';
@@ -44,7 +45,7 @@ export function UpdateSettingsForm({settings}: UpdateSettingsFormProps) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     start(async () => {
-      const res = await saveUpdateSettingsAction(fd);
+      const res = await callAction(() => saveUpdateSettingsAction(fd), asError);
       setResult(res);
       if (res.ok) {
         toast.success(t('saved'));

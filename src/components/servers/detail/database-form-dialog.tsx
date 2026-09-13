@@ -7,6 +7,7 @@ import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {createDatabaseAction} from '@/server/actions/databases';
 import type {DbMutResult} from '@/server/actions/databases';
+import {callAction, asError} from '@/components/call-action';
 import type {DbEngine} from '@/lib/aapanel';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -51,7 +52,7 @@ export function DatabaseFormDialog({id, trigger, onDone}: DatabaseFormDialogProp
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     startSubmit(async () => {
-      const res = await createDatabaseAction(id, fd);
+      const res = await callAction(() => createDatabaseAction(id, fd), asError);
       setResult(res);
       if (res.ok) {
         toast.success(t('created'));

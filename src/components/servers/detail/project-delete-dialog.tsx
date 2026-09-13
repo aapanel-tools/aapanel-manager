@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import {deleteProjectAction} from '@/server/actions/projects';
+import {callAction, asError} from '@/components/call-action';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -49,7 +50,7 @@ export function ProjectDeleteDialog({serverId, projectName, trigger, onDone}: Pr
     fd.set('name', projectName);
     fd.set('confirm', confirmValue);
     start(async () => {
-      const res = await deleteProjectAction(serverId, fd);
+      const res = await callAction(() => deleteProjectAction(serverId, fd), asError);
       if (res.ok) {
         toast.success(t('deleted'));
         setOpen(false);

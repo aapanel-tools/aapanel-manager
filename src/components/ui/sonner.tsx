@@ -1,15 +1,22 @@
 "use client"
 
 import { useTheme } from "next-themes"
+import { useTranslations } from "next-intl"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
+  // The region a screen reader announces toasts from. sonner names it
+  // "Notifications" unless told otherwise, which is English on a Russian
+  // screen (Д-27). Single quotes on purpose: messages.test.ts only reads
+  // t('…') calls written that way.
+  const t = useTranslations('ui')
 
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
+      containerAriaLabel={t('notifications')}
       className="toaster group"
       icons={{
         success: (

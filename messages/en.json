@@ -360,6 +360,10 @@
     "reread": "Read again",
     "server": "Server"
   },
+  "ui": {
+    "close": "Close",
+    "notifications": "Notifications"
+  },
   "listSearch": {
     "clear": "Clear search"
   },

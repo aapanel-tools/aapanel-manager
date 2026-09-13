@@ -43,6 +43,8 @@
     "cancel": "Отмена",
     "test": "Проверить подключение",
     "testing": "Проверка…",
+    "testOk": "На связи · CPU {cpu} · ОЗУ {mem}",
+    "testOkCertificate": "На связи · CPU {cpu} · ОЗУ {mem} · сертификат {fingerprint}",
     "formHint": "URL панели и ключ API. Ключ хранится в зашифрованном виде.",
     "name": "Название",
     "baseUrl": "URL панели",

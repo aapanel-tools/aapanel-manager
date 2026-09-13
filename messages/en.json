@@ -43,6 +43,8 @@
     "cancel": "Cancel",
     "test": "Test connection",
     "testing": "Testing…",
+    "testOk": "Online · CPU {cpu} · RAM {mem}",
+    "testOkCertificate": "Online · CPU {cpu} · RAM {mem} · certificate {fingerprint}",
     "formHint": "Panel URL and API key. The key is stored encrypted.",
     "name": "Name",
     "baseUrl": "Panel URL",

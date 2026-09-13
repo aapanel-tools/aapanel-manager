@@ -25,6 +25,7 @@ import {ProjectLogsDialog} from '@/components/servers/detail/project-logs-dialog
 import {ProjectFormDialog} from '@/components/servers/detail/project-form-dialog';
 import {ProjectDeleteDialog} from '@/components/servers/detail/project-delete-dialog';
 import {FailureNotice} from '@/components/failure-notice';
+import {cpuText} from '@/components/servers/metric-text';
 
 export interface ProjectsTableProps {
   id: string;
@@ -182,7 +183,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
                 </Badge>
               </TableCell>
               <TableCell>{p.port ?? '—'}</TableCell>
-              <TableCell>{p.cpu == null ? '—' : `${p.cpu.toFixed(1)}%`}</TableCell>
+              <TableCell>{cpuText(p.cpu)}</TableCell>
               <TableCell>{p.mem == null ? '—' : `${Math.round(p.mem)} MB`}</TableCell>
               <TableCell>
                 <div className="flex items-center gap-1">

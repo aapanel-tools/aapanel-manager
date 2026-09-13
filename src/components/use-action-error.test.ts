@@ -127,8 +127,6 @@ describe('every refusal an action can return', () => {
 const UNTRANSLATED_ON_PURPOSE: Record<string, string> = {
   'src/components/overview/attention-list.tsx: r.error':
     "the poller's stored English sentence (ServerStatus.error), not an action's refusal — kept in one language on purpose, see Д-21",
-  'src/components/servers/server-form-dialog.tsx: res.message':
-    'the connection probe’s technical summary on success, not a refusal — recorded as Д-29',
 };
 
 describe('every place a component shows what an action said', () => {

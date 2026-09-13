@@ -5,6 +5,7 @@ import {useFieldError} from '@/components/use-field-error';
 import {useActionError} from '@/components/use-action-error';
 import {toast} from 'sonner';
 import type {ServerRow} from '@/lib/servers/query';
+import {cpuText, percentText} from './metric-text';
 import {
   createServerAction,
   updateServerAction,
@@ -103,8 +104,18 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
     const fd = new FormData(form);
     startTest(async () => {
       const res = await testConnectionAction(fd);
-      if (res.ok) toast.success(res.message);
-      else toast.error(actionError(res.message));
+      if (!res.ok) {
+        toast.error(actionError(res.message));
+        return;
+      }
+      // The action reports figures; the sentence is chosen here, where the
+      // reader's language is known (Д-29).
+      const figures = {cpu: cpuText(res.cpu), mem: percentText(res.mem)};
+      toast.success(
+        res.fingerprint
+          ? t('testOkCertificate', {...figures, fingerprint: res.fingerprint})
+          : t('testOk', figures),
+      );
     });
   }
 

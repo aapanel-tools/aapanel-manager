@@ -180,8 +180,28 @@ export async function deleteServerAction(formData: FormData): Promise<SimpleResu
   }
 }
 
+/**
+ * What a connection test found.
+ *
+ * Figures rather than a sentence: the form puts them into words in the reader's
+ * language. A sentence built here arrived as `online · cpu 4% · mem 25%` in the
+ * middle of a Russian interface, and turned memory the panel did not report
+ * into `0%` (Д-29).
+ */
+export type ConnectionTestResult =
+  | {
+      ok: true;
+      /** Percent, or null when the panel did not say. */
+      cpu: number | null;
+      /** Percent, or null when the panel did not say. */
+      mem: number | null;
+      /** The certificate that answered, grouped for reading off; null when nothing was pinned. */
+      fingerprint: string | null;
+    }
+  | {ok: false; message: string};
+
 /** Tests connectivity for a (possibly unsaved) server. Read-only on the panel. */
-export async function testConnectionAction(formData: FormData): Promise<SimpleResult> {
+export async function testConnectionAction(formData: FormData): Promise<ConnectionTestResult> {
   try {
     await requireAdmin();
   } catch (e) {
@@ -211,10 +231,11 @@ export async function testConnectionAction(formData: FormData): Promise<SimpleRe
         : null;
     const client = await createClientForServer({baseUrl, apiSkEnc, tlsMode, tlsPinSha256: fingerprint});
     const total = await client.getSystemTotal();
-    const cert = fingerprint ? ` · cert ${formatFingerprint(fingerprint)}` : '';
     return {
       ok: true,
-      message: `online · cpu ${total.cpu ?? '?'}% · mem ${Math.round(total.mem ?? 0)}%${cert}`,
+      cpu: total.cpu,
+      mem: total.mem,
+      fingerprint: fingerprint ? formatFingerprint(fingerprint) : null,
     };
   } catch (err) {
     return {ok: false, message: await presentError(err)};

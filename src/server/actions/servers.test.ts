@@ -65,6 +65,7 @@ vi.mock('@/env', async (orig) => {
 });
 
 import {prisma} from '@/lib/db/prisma';
+import {createClientForServer} from '@/lib/aapanel';
 import {decryptSecret} from '@/lib/crypto/secret-box';
 import {
   createServerAction,
@@ -72,6 +73,7 @@ import {
   inspectCertificateAction,
   refreshServerStatusAction,
   refreshVisibleStatusesAction,
+  testConnectionAction,
   updateServerAction,
 } from './servers';
 
@@ -314,5 +316,40 @@ describe('updateServerAction — certificate pin', () => {
     expect(state.ok).toBe(false);
     if (!state.ok) expect(state.fieldErrors?.tlsPinSha256).toBeTruthy();
     await collectAudits(s.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Connection test (Д-29)
+// ---------------------------------------------------------------------------
+
+describe('testConnectionAction', () => {
+  const probe = (fields: Record<string, string>) =>
+    testConnectionAction(fd({baseUrl: 'http://1.2.3.4:8888', apiSk: 'k'.repeat(16), tlsMode: 'VERIFY', ...fields}));
+
+  it('reports figures rather than a sentence, so the form words them in the reader’s language', async () => {
+    panel.probeCertificate.mockClear();
+    expect(await probe({})).toEqual({ok: true, cpu: 7, mem: 8, fingerprint: null});
+    // Nothing was pinned, so no certificate was asked for.
+    expect(panel.probeCertificate).not.toHaveBeenCalled();
+  });
+
+  it('names the certificate that answered when the address is pinned', async () => {
+    const res = await probe({baseUrl: 'https://1.2.3.4:8888', tlsMode: 'PINNED'});
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.fingerprint).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+  });
+
+  it('passes on a figure the panel did not report as unknown, not as zero', async () => {
+    // The sentence this replaced turned missing memory into `mem 0%`.
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      (() => ({getSystemTotal: async () => ({online: true, cpu: null, mem: null})})) as never,
+    );
+    expect(await probe({})).toEqual({ok: true, cpu: null, mem: null, fingerprint: null});
+  });
+
+  it('forbids a viewer', async () => {
+    guard.user.role = 'viewer';
+    expect(await probe({})).toEqual({ok: false, message: 'forbidden'});
   });
 });

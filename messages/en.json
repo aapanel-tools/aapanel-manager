@@ -102,7 +102,6 @@
     "ftp": "FTP",
     "cron": "Cron",
     "firewall": "Firewall",
-    "soon": "Soon",
     "notFound": "Server not found",
     "sites": "Sites"
   },
@@ -331,6 +330,35 @@
     "toastDisabled": "Account switched off",
     "toastPassword": "Password changed",
     "toastDeleted": "Account deleted"
+  },
+  "files": {
+    "title": "Files",
+    "refresh": "Refresh",
+    "breadcrumbs": "Path",
+    "parent": "Up one level",
+    "name": "Name",
+    "size": "Size",
+    "modified": "Modified",
+    "mode": "Permissions",
+    "owner": "Owner",
+    "open": "Open",
+    "empty": "This directory is empty.",
+    "loadFailed": "Could not read the directory",
+    "badPath": "The address holds an invalid path",
+    "badPathHint": "A path must be absolute, with no “..” and no control characters.",
+    "goDefault": "Go to {path}",
+    "tooLargeToOpen": "over {limit}",
+    "symlink": "Symbolic link to {target}",
+    "unusableName": "The name holds characters this app will not open a file by",
+    "reading": "Reading the file…",
+    "readFailed": "Could not open the file",
+    "tooLarge": "The file is over {limit} — files that size are not opened here. Look at it in the panel or over SSH.",
+    "binary": "Binary file, {size} — it cannot be shown as text.",
+    "emptyFile": "The file is empty.",
+    "meta": "{size} · {encoding}",
+    "journalNote": "Every time a file is opened, the operations journal records it.",
+    "reread": "Read again",
+    "server": "Server"
   },
   "listSearch": {
     "clear": "Clear search"

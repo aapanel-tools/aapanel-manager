@@ -7,6 +7,8 @@ import {
   cronListResponse,
   cronLogsResponse,
   cronMutationResponse,
+  dirListingResponse,
+  fileBodyResponse,
   firewallInfoResponse,
   firewallPortRulesResponse,
   firewallStatusResponse,
@@ -27,6 +29,7 @@ import {
 } from './schemas';
 import {TlsPinMismatchError, dispatcherFor, formatFingerprint} from './tls';
 import {DEFAULT_PAGE_LIMIT, describePage, normalizeSearch} from './paging';
+import {FILE_VIEW_MAX_BYTES, FILE_VIEW_MAX_RESPONSE_BYTES, looksBinary} from '@/lib/files/viewing';
 import {
   DEFAULT_MAX_CONCURRENT,
   PanelBusyError,
@@ -53,6 +56,9 @@ import {
   type FirewallRule,
   type FtpUser,
   type FtpCreateInput,
+  type DirectoryListing,
+  type FileContent,
+  type FileEntry,
   type Site,
   type SiteDetail,
   type SiteDirectory,
@@ -80,6 +86,21 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 /**
+ * An answer that did not fit under its byte cap.
+ *
+ * To everything that already handles a panel failure it is one — same kind,
+ * same message — so no existing caller changes. It is a class of its own for
+ * the one caller where overflowing means something specific: reading a file,
+ * where it means the file is too large to show, which is an answer rather than
+ * a fault (ADR-0008).
+ */
+class ResponseTooLargeError extends AaPanelError {
+  constructor(message: string, status: number) {
+    super('panel_error', message, status);
+  }
+}
+
+/**
  * Reads the body while counting bytes, and stops the moment the cap is passed.
  *
  * Content-Length is checked first when the panel declares it — that refuses an
@@ -90,8 +111,7 @@ const DEFAULT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 async function readCapped(res: Response, limit: number, path: string): Promise<string> {
   const declared = Number(res.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > limit) {
-    throw new AaPanelError(
-      'panel_error',
+    throw new ResponseTooLargeError(
       `Panel answer for ${path} declares ${declared} bytes, over the ${limit}-byte limit`,
       res.status,
     );
@@ -108,8 +128,7 @@ async function readCapped(res: Response, limit: number, path: string): Promise<s
     total += value.byteLength;
     if (total > limit) {
       await reader.cancel();
-      throw new AaPanelError(
-        'panel_error',
+      throw new ResponseTooLargeError(
         `Panel answer for ${path} exceeded the ${limit}-byte limit`,
         res.status,
       );
@@ -206,14 +225,18 @@ export class AaPanelClient {
     path: string,
     fields: Record<string, string> = {},
     schema?: ZodType<T>,
+    options: {maxBytes?: number} = {},
   ): Promise<T> {
     // One budget covers queueing and the request itself: a caller who asked for an
     // answer within timeoutMs gets an answer or an error within timeoutMs, not that
     // long waiting plus that long requesting (ADR-0004).
     const signal = AbortSignal.timeout(this.timeoutMs);
+    // A caller may tighten the byte cap for one request, never loosen it: the
+    // client-wide cap protects the process, whoever happens to be asking.
+    const maxBytes = Math.min(options.maxBytes ?? Number.POSITIVE_INFINITY, this.maxResponseBytes);
     const release = await this.takeSlot(signal);
     try {
-      return await this.send<T>(path, fields, schema, signal);
+      return await this.send<T>(path, fields, schema, signal, maxBytes);
     } finally {
       // Released only after the body is read — the connection is busy until then.
       release();
@@ -239,6 +262,7 @@ export class AaPanelClient {
     fields: Record<string, string>,
     schema: ZodType<T> | undefined,
     signal: AbortSignal,
+    maxBytes: number,
   ): Promise<T> {
     const auth = sign(this.apiSk, Math.floor(Date.now() / 1000));
     const body = new URLSearchParams({...auth, ...fields});
@@ -286,7 +310,7 @@ export class AaPanelClient {
     if (!res.ok) {
       throw new AaPanelError('panel_error', `Panel returned HTTP ${res.status}`, res.status);
     }
-    const text = await readCapped(res, this.maxResponseBytes, path);
+    const text = await readCapped(res, maxBytes, path);
     let payload: unknown;
     try {
       payload = JSON.parse(text);
@@ -608,34 +632,91 @@ export class AaPanelClient {
     return raw.message.result;
   }
 
-  // ── Files (directory browsing) ─────────────────────────────────────────────
+  // ── Files (reading side, ADR-0008) ─────────────────────────────────────────
 
   /**
-   * List the sub-directories of a path — backs the directory picker used when
-   * creating a project. Captured from a live v8 panel (flat body).
-   * Returns only folder names (files are ignored here).
+   * One directory: its sub-directories, then its files, each sorted by name.
+   *
+   * Captured from a live v8 panel (flat body). A single source, so it throws
+   * rather than degrading — an unreadable directory is an error, never an empty
+   * one (ADR-0003). Rows are kept even when their names cannot be used in a
+   * path; what to offer for such a row is the caller's decision (joinPath()).
+   *
+   * Whether `showRow` and the `Total N` in `page` count directories and files
+   * together has not been observed. describePage() errs towards "there may be
+   * more", which is the safe side of that unknown.
+   */
+  async listDirectory(path: string, params: {limit?: number} = {}): Promise<DirectoryListing> {
+    const limit = params.limit ?? DEFAULT_PAGE_LIMIT;
+    const raw = await this.post(
+      'v2/files?action=GetDirNew',
+      {path, is_operating: 'true', p: '1', showRow: String(limit), disk: 'false'},
+      dirListingResponse,
+    );
+    // The schema checks the shape; only the status says whether it is an answer.
+    if (raw.status !== 0) throw new AaPanelError('panel_error', `Panel refused to list ${path}`);
+
+    const toEntry = (row: (typeof raw.message.dir)[number], kind: FileEntry['kind']): FileEntry => ({
+      name: row.nm,
+      kind,
+      size: panelInt(row.sz),
+      modifiedAt: panelInt(row.mt),
+      mode: String(row.acc),
+      owner: String(row.user),
+      linkTarget: row.lnk,
+    });
+    const byName = (a: FileEntry, b: FileEntry) => a.name.localeCompare(b.name);
+    const items = [
+      ...raw.message.dir.map((row) => toEntry(row, 'dir')).sort(byName),
+      ...raw.message.files.map((row) => toEntry(row, 'file')).sort(byName),
+    ];
+    const cut = describePage('files', items.length, limit, raw.message.page);
+    return {path: raw.message.path ?? path, items, failures: [], truncations: cut ? [cut] : []};
+  }
+
+  /**
+   * The sub-directories of a path, by name — backs the directory picker used
+   * when creating a project. One reading of GetDirNew serves both, so the two
+   * cannot come to disagree about what a directory holds.
    */
   async listDir(path: string): Promise<{path: string; dirs: string[]}> {
-    const raw = await this.post<{
-      status: number;
-      message: {path?: string; dir?: Array<{nm?: unknown}>} | string;
-    }>('v2/files?action=GetDirNew', {
-      path,
-      is_operating: 'true',
-      p: '1',
-      showRow: '1000',
-      disk: 'false',
-    });
+    const listing = await this.listDirectory(path);
+    const dirs = listing.items
+      .filter((entry) => entry.kind === 'dir' && entry.name.length > 0)
+      .map((entry) => entry.name);
+    return {path: listing.path, dirs};
+  }
 
-    if (raw.status !== 0 || !raw.message || typeof raw.message === 'string') {
-      const msg = typeof raw.message === 'string' ? raw.message : 'Failed to list directory';
-      throw new AaPanelError('panel_error', msg);
-    }
-    const dirs = (raw.message.dir ?? [])
-      .map((d) => (typeof d?.nm === 'string' ? d.nm : ''))
-      .filter((n) => n.length > 0)
-      .sort((a, b) => a.localeCompare(b));
-    return {path: raw.message.path ?? path, dirs};
+  /**
+   * A file's contents, if they are text and small enough to show (ADR-0008).
+   *
+   * Captured from a live v8 panel (flat body). A file over FILE_VIEW_MAX_BYTES
+   * and a binary file are answers rather than failures, and neither carries
+   * anything that was in the file.
+   *
+   * The contents leave through the return value and nowhere else. Errors raised
+   * here name the path, never the text; a refusal is described in the panel's
+   * own words, and those arrive only with a non-zero status — the one case in
+   * which the contents do not.
+   */
+  async readFile(path: string): Promise<FileContent> {
+    const tooLarge: FileContent = {kind: 'tooLarge', path, limit: FILE_VIEW_MAX_BYTES};
+    const raw = await this.post('v2/files?action=GetFileBody', {path}, fileBodyResponse, {
+      maxBytes: FILE_VIEW_MAX_RESPONSE_BYTES,
+    }).catch((err: unknown) => {
+      // Overflowing this cap means the file is certainly over the limit — the
+      // cap is sized so that no file within it can overflow (viewing.ts).
+      if (err instanceof ResponseTooLargeError) return null;
+      throw err;
+    });
+    if (raw === null) return tooLarge;
+    if (raw.status !== 0) throw new AaPanelError('panel_error', `Panel refused to read ${path}`);
+
+    const {data, encoding} = raw.message;
+    const size = panelInt(raw.message.size) ?? new TextEncoder().encode(data).byteLength;
+    if (size > FILE_VIEW_MAX_BYTES) return tooLarge;
+    if (looksBinary(data)) return {kind: 'binary', path, size};
+    return {kind: 'text', path, size, encoding, text: data};
   }
 
   // ── System monitoring ─────────────────────────────────────────────────────

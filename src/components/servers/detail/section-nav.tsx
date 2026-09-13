@@ -11,15 +11,14 @@ export interface SectionNavProps {
   isAdmin: boolean;
 }
 
-const DISABLED_SECTIONS = ['files'] as const;
-
-export function SectionNav({id}: SectionNavProps) {
+export function SectionNav({id, isAdmin}: SectionNavProps) {
   const pathname = usePathname();
   const t = useTranslations('detail');
 
   const overviewHref = `/servers/${id}` as Route;
   const projectsHref = `/servers/${id}/projects` as Route;
   const databasesHref = `/servers/${id}/databases` as Route;
+  const filesHref = `/servers/${id}/files` as Route;
   const sitesHref = `/servers/${id}/sites` as Route;
   const cronHref = `/servers/${id}/cron` as Route;
   const firewallHref = `/servers/${id}/firewall` as Route;
@@ -32,6 +31,9 @@ export function SectionNav({id}: SectionNavProps) {
     {href: sitesHref, label: t('sites'), exact: false},
     {href: projectsHref, label: t('projects'), exact: false},
     {href: databasesHref, label: t('databases'), exact: false},
+    // Administrators only, like the section behind it (ADR-0008). Shown to a
+    // viewer, it would be a link that sends them straight back to the overview.
+    ...(isAdmin ? [{href: filesHref, label: t('files'), exact: false}] : []),
     {href: cronHref, label: t('cron'), exact: false},
     {href: firewallHref, label: t('firewall'), exact: false},
     {href: ftpHref, label: t('ftp'), exact: false},
@@ -57,17 +59,6 @@ export function SectionNav({id}: SectionNavProps) {
           </Link>
         );
       })}
-
-      {DISABLED_SECTIONS.map((key) => (
-        <div
-          key={key}
-          className="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-muted-foreground/50 cursor-not-allowed select-none"
-          aria-disabled="true"
-        >
-          <span>{t(key)}</span>
-          <span className="text-xs font-normal opacity-60">{t('soon')}</span>
-        </div>
-      ))}
     </nav>
   );
 }

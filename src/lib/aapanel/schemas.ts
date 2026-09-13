@@ -12,7 +12,7 @@ import {z} from 'zod';
  * client does not read are deliberately left out — unknown keys are stripped, not
  * rejected, so a newer panel adding fields keeps working. Endpoints that already
  * validate by hand (`GetSystemTotal`, `GetDiskInfo`, `GetNetWork`, `pre_env`,
- * `get_run_list`, `GetDirNew`) are left alone: they check every field they touch.
+ * `get_run_list`) are left alone: they check every field they touch.
  */
 
 /** aaPanel's standard envelope. The payload is validated per endpoint. */
@@ -375,4 +375,58 @@ export const cronListResponse = envelope(
       user: z.string().default(''),
     }),
   ),
+);
+
+// ---------------------------------------------------------------------------
+// Files (reading side, ADR-0008)
+// ---------------------------------------------------------------------------
+
+/**
+ * One entry of a directory listing, sub-directory and file alike.
+ *
+ * Only `nm` matters for finding the entry again; everything else is shown and
+ * has a default, so an older panel that leaves out a column costs a cell, not
+ * the directory. Numbers are accepted as strings for the same reason as in the
+ * scheduler's list. `durl`, `fav`, `top` and `rmk` belong to the panel's own
+ * interface and are not read.
+ */
+const dirEntry = z.object({
+  nm: z.string().default(''),
+  sz: panelNumber.nullish(),
+  mt: panelNumber.nullish(),
+  acc: panelNumber.default(''),
+  user: panelNumber.default(''),
+  lnk: z.string().default(''),
+});
+
+/**
+ * A directory listing.
+ *
+ * `dir` and `files` are required, for the reason `data` is required in the paged
+ * lists: an answer without them is not an empty directory, it is a refusal or a
+ * shape this app does not understand, and reporting it as "the directory is
+ * empty" is a false statement about a client's server (ADR-0003).
+ */
+export const dirListingResponse = envelope(
+  z.object({
+    path: z.string().optional(),
+    dir: z.array(dirEntry),
+    files: z.array(dirEntry),
+    page: z.string().default(''),
+  }),
+);
+
+/**
+ * A file's contents.
+ *
+ * `data` is required: an answer with no contents is not an empty file. What the
+ * editor will need — `st_mtime` for the conflict check, `only_read` — belongs to
+ * the writing slice and is deliberately not read yet.
+ */
+export const fileBodyResponse = envelope(
+  z.object({
+    data: z.string(),
+    size: panelNumber.nullish(),
+    encoding: z.string().default(''),
+  }),
 );

@@ -446,6 +446,45 @@ export interface FtpCreateInput {
   note?: string;
 }
 
+/** One row of a directory listing. */
+export interface FileEntry {
+  /**
+   * As the panel sent it. Not necessarily usable as part of a path — Linux
+   * allows a newline in a file name — and kept anyway: see joinPath().
+   */
+  name: string;
+  kind: 'dir' | 'file';
+  /** Bytes. For a directory this is the directory node itself, not what it holds. */
+  size: number | null;
+  /** Unix seconds. */
+  modifiedAt: number | null;
+  /** Permission bits as the panel writes them, octal: "644". */
+  mode: string;
+  owner: string;
+  /** Where a symbolic link points; empty for anything that is not a link. */
+  linkTarget: string;
+}
+
+/**
+ * A directory as the panel listed it: sub-directories first, then files, each
+ * by name. A single source, so `failures` stays empty — an unreadable directory
+ * is an error, not an empty listing (ADR-0003).
+ */
+export interface DirectoryListing extends PartialResult<FileEntry> {
+  path: string;
+}
+
+/**
+ * What reading a file produced (ADR-0008).
+ *
+ * Only `text` carries the contents. The other two are answers, not failures,
+ * and they carry nothing that was in the file.
+ */
+export type FileContent =
+  | {kind: 'text'; path: string; size: number; encoding: string; text: string}
+  | {kind: 'binary'; path: string; size: number}
+  | {kind: 'tooLarge'; path: string; limit: number};
+
 export interface DbCreateInput {
   engine: DbEngine;
   name: string;

@@ -2,6 +2,7 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {AaPanelClient} from './client';
 import {AaPanelError, type NodeProject, type Database} from './types';
 import {resetGates} from './rate-limit';
+import {FILE_VIEW_MAX_BYTES, FILE_VIEW_MAX_RESPONSE_BYTES} from '@/lib/files/viewing';
 
 // ---------------------------------------------------------------------------
 // Mock undici so tests never touch the network.
@@ -1020,6 +1021,196 @@ describe('AaPanelClient.listDir', () => {
     await expect(client.listDir('/nope')).rejects.toMatchObject({
       kind: 'panel_error',
     } satisfies Partial<AaPanelError>);
+  });
+});
+
+describe('AaPanelClient.listDirectory', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  /** A row exactly as a live v8 panel sends it, fields the app does not read included. */
+  const row = (over: Record<string, unknown>) => ({
+    nm: 'x', sz: 4096, mt: 1775798099, acc: '755', user: 'www',
+    lnk: '', durl: '', cmp: 0, fav: '0', rmk: '', top: 0, sn: 'x',
+    ...over,
+  });
+
+  const listing = (message: Record<string, unknown>) =>
+    jsonResponse({
+      status: 0,
+      message: {
+        path: '/www/wwwroot/example', file_recycle: true, page: '', dir: [], files: [],
+        disk: [], dir_history: [], search_history: [], is_max: false,
+        ...message,
+      },
+    }) as never;
+
+  it('maps the rows, directories first and each by name', async () => {
+    fetchMock.mockResolvedValueOnce(
+      listing({
+        page: "<div><span class='Pcount'>Total 4</span></div>",
+        dir: [row({nm: 'wp-content'}), row({nm: 'current', lnk: '/www/wwwroot/other'})],
+        files: [
+          row({nm: 'wp-config.php', sz: 3100, acc: '644'}),
+          row({nm: '.htaccess', sz: '212', mt: '1775021497', acc: 644, user: 'root'}),
+        ],
+      }),
+    );
+
+    const res = await new AaPanelClient(cfg).listDirectory('/www/wwwroot/example');
+
+    expect(res.items.map((e) => `${e.kind}:${e.name}`)).toEqual([
+      'dir:current',
+      'dir:wp-content',
+      'file:.htaccess',
+      'file:wp-config.php',
+    ]);
+    expect(res.items[0]).toEqual({
+      name: 'current',
+      kind: 'dir',
+      size: 4096,
+      modifiedAt: 1775798099,
+      mode: '755',
+      owner: 'www',
+      linkTarget: '/www/wwwroot/other',
+    });
+    // The panel writes numbers either way; neither should cost the row.
+    expect(res.items[2]).toMatchObject({size: 212, modifiedAt: 1775021497, mode: '644', owner: 'root'});
+    expect(res.path).toBe('/www/wwwroot/example');
+    expect(res.failures).toEqual([]);
+    expect(res.truncations).toEqual([]);
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('v2/files?action=GetDirNew');
+    const body = new URLSearchParams(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body.get('path')).toBe('/www/wwwroot/example');
+    expect(body.get('showRow')).toBe('1000');
+    expect(body.get('disk')).toBe('false');
+    expect(body.has('data')).toBe(false);
+  });
+
+  it('says when the directory holds more than was read', async () => {
+    fetchMock.mockResolvedValueOnce(
+      listing({page: "<span class='Pcount'>Total 1500</span>", files: [row({nm: 'a.log'})]}),
+    );
+    const res = await new AaPanelClient(cfg).listDirectory('/www/wwwlogs');
+    expect(res.truncations).toEqual([{source: 'files', shown: 1, total: 1500}]);
+  });
+
+  it('keeps a row whose name cannot be turned into a path', async () => {
+    // Hiding it would make the console a good place to hide a file.
+    fetchMock.mockResolvedValueOnce(listing({files: [row({nm: 'index.php\n'})]}));
+    const res = await new AaPanelClient(cfg).listDirectory('/www/wwwroot/example');
+    expect(res.items.map((e) => e.name)).toEqual(['index.php\n']);
+  });
+
+  it('treats an answer without a file list as a failure, not as an empty directory', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {path: '/www', dir: []}}) as never,
+    );
+    await expect(new AaPanelClient(cfg).listDirectory('/www')).rejects.toMatchObject({
+      kind: 'panel_error',
+    } satisfies Partial<AaPanelError>);
+  });
+
+  it("passes the panel's refusal on in its own words", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: 'Указанный каталог не существует!'}) as never,
+    );
+    await expect(new AaPanelClient(cfg).listDirectory('/nope')).rejects.toMatchObject({
+      kind: 'panel_error',
+      message: 'Указанный каталог не существует!',
+    } satisfies Partial<AaPanelError>);
+  });
+});
+
+describe('AaPanelClient.readFile', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  const body = (message: Record<string, unknown>) =>
+    jsonResponse({
+      status: 0,
+      message: {only_read: false, historys: [], auto_save: null, st_mtime: '1780896861', ...message},
+    }) as never;
+
+  it('returns a text file with its size and encoding', async () => {
+    fetchMock.mockResolvedValueOnce(
+      body({size: 30, encoding: 'utf-8', data: "<?php\ndefine('DB_NAME', 'wp');\n"}),
+    );
+    const res = await new AaPanelClient(cfg).readFile('/www/wwwroot/example/wp-config.php');
+
+    expect(res).toEqual({
+      kind: 'text',
+      path: '/www/wwwroot/example/wp-config.php',
+      size: 30,
+      encoding: 'utf-8',
+      text: "<?php\ndefine('DB_NAME', 'wp');\n",
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('v2/files?action=GetFileBody');
+    const sent = new URLSearchParams(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(sent.get('path')).toBe('/www/wwwroot/example/wp-config.php');
+  });
+
+  it('measures the text itself when the panel does not say how big it is', async () => {
+    fetchMock.mockResolvedValueOnce(body({encoding: 'utf-8', data: 'привет'}));
+    const res = await new AaPanelClient(cfg).readFile('/tmp/ru.txt');
+    expect(res).toMatchObject({kind: 'text', size: 12});
+  });
+
+  it('reports a binary file without handing back what was in it', async () => {
+    fetchMock.mockResolvedValueOnce(body({size: 10, encoding: 'ascii', data: '\u0089PNG\u0000\u0000IHDR'}));
+    const res = await new AaPanelClient(cfg).readFile('/www/wwwroot/example/logo.png');
+    expect(res).toEqual({kind: 'binary', path: '/www/wwwroot/example/logo.png', size: 10});
+  });
+
+  it('reports a file over the limit by the size the panel gives', async () => {
+    fetchMock.mockResolvedValueOnce(body({size: FILE_VIEW_MAX_BYTES + 1, encoding: 'utf-8', data: 'x'}));
+    const res = await new AaPanelClient(cfg).readFile('/www/wwwlogs/access.log');
+    expect(res).toEqual({kind: 'tooLarge', path: '/www/wwwlogs/access.log', limit: FILE_VIEW_MAX_BYTES});
+  });
+
+  it('reports a file over the limit when the answer outgrows its cap, whatever the size says', async () => {
+    // A listing is a snapshot and a log keeps growing: the size can be stale,
+    // the byte count of the answer cannot.
+    const huge = JSON.stringify({
+      status: 0,
+      message: {size: 900, encoding: 'utf-8', data: 'a'.repeat(FILE_VIEW_MAX_RESPONSE_BYTES)},
+    });
+    fetchMock.mockResolvedValueOnce(new Response(huge, {status: 200}) as never);
+    const res = await new AaPanelClient(cfg).readFile('/www/wwwlogs/growing.log');
+    expect(res).toEqual({kind: 'tooLarge', path: '/www/wwwlogs/growing.log', limit: FILE_VIEW_MAX_BYTES});
+  });
+
+  it('keeps the ordinary cap for every other answer', async () => {
+    // The file cap is tighter than the client's own; it must not become the
+    // cap for a listing that happens to be read next.
+    const big = JSON.stringify({
+      status: 0,
+      message: {page: '', dir: [], files: [{nm: 'a'.repeat(FILE_VIEW_MAX_RESPONSE_BYTES)}]},
+    });
+    fetchMock.mockResolvedValueOnce(new Response(big, {status: 200}) as never);
+    const res = await new AaPanelClient(cfg).listDirectory('/www');
+    expect(res.items).toHaveLength(1);
+  });
+
+  it("passes the panel's refusal on", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: {result: 'Файл не существует'}}) as never,
+    );
+    await expect(new AaPanelClient(cfg).readFile('/nope.txt')).rejects.toMatchObject({
+      kind: 'panel_error',
+      message: 'Файл не существует',
+    } satisfies Partial<AaPanelError>);
+  });
+
+  it('never quotes what came back when the answer has the wrong shape', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: {line: 'DB_PASSWORD=hunter2'}}}) as never,
+    );
+    const err = await new AaPanelClient(cfg).readFile('/www/.env').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AaPanelError);
+    expect((err as Error).message).not.toContain('hunter2');
   });
 });
 

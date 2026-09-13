@@ -122,7 +122,9 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
 
           {!result.ok && result.error && result.error !== 'validation' ? (
             <p className="text-sm text-destructive" role="alert">
-              {result.error}
+              {/* A refusal of the action's own arrives as a code — `forbidden`,
+                  `unauthenticated` — and is put into words here (Д-23). */}
+              {actionError(result.error)}
             </p>
           ) : null}
 
@@ -154,6 +156,9 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
           <div className="space-y-1.5">
             <Label htmlFor="sf-tag">{t('tag')}</Label>
             <Input id="sf-tag" name="tag" defaultValue={server?.tag ?? ''} />
+            {/* Without this line an over-long tag made the form refuse to save
+                and say nothing about why (noticed in Д-24). */}
+            {fieldErr('tag') ? <p className="text-xs text-destructive">{fieldErr('tag')}</p> : null}
           </div>
 
           <div className="space-y-2">

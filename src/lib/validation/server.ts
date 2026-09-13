@@ -12,7 +12,7 @@ const httpUrl = z
 const optionalTag = z
   .string()
   .trim()
-  .max(50)
+  .max(50, FIELD.tooLong)
   .optional()
   .transform((v) => (v === '' || v == null ? undefined : v));
 

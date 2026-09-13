@@ -5,9 +5,13 @@ import {signOut} from '@/auth';
 import {Button} from '@/components/ui/button';
 import {ThemeToggle} from '@/components/theme-toggle';
 import {AppNotices} from '@/components/app-notices';
+import {getCurrentVersion} from '@/lib/version/current';
 
 export async function AppShell({children, isAdmin = false}: {children: React.ReactNode; isAdmin?: boolean}) {
   const t = await getTranslations('nav');
+  // The build rendering this page, handed to the tab so it can tell when the
+  // server has moved on to another one (ADR-0011).
+  const {deploymentId} = getCurrentVersion();
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b px-4 py-2">
@@ -35,7 +39,7 @@ export async function AppShell({children, isAdmin = false}: {children: React.Rea
           </form>
         </div>
       </header>
-      <AppNotices />
+      <AppNotices buildId={deploymentId} />
       <main className="p-4">{children}</main>
     </div>
   );

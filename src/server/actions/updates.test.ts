@@ -17,7 +17,7 @@ vi.mock('@/lib/auth/guards', async (orig) => {
 vi.mock('next/cache', () => ({revalidatePath: vi.fn()}));
 vi.mock('@/lib/audit', () => ({recordAudit: vi.fn(async () => null)}));
 vi.mock('@/lib/version/current', () => ({
-  getCurrentVersion: () => ({version: '1.0.0', commit: null, buildTime: null}),
+  getCurrentVersion: () => ({version: '1.0.0', commit: null, buildTime: null, deploymentId: null}),
 }));
 
 const settingsMock = vi.hoisted(() => ({

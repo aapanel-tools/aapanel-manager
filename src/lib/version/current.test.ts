@@ -6,12 +6,14 @@ describe('getCurrentVersion', () => {
     APP_VERSION: process.env.APP_VERSION,
     APP_COMMIT: process.env.APP_COMMIT,
     APP_BUILD_TIME: process.env.APP_BUILD_TIME,
+    NEXT_DEPLOYMENT_ID: process.env.NEXT_DEPLOYMENT_ID,
   };
 
   beforeEach(() => {
     delete process.env.APP_VERSION;
     delete process.env.APP_COMMIT;
     delete process.env.APP_BUILD_TIME;
+    delete process.env.NEXT_DEPLOYMENT_ID;
   });
 
   afterEach(() => {
@@ -39,5 +41,11 @@ describe('getCurrentVersion', () => {
     const v = getCurrentVersion();
     expect(v.commit).toBe('abc1234');
     expect(v.buildTime).toBe('2026-06-13T00:00:00Z');
+  });
+
+  it('reads the deployment id the launcher set, null when absent (ADR-0011)', () => {
+    expect(getCurrentVersion().deploymentId).toBeNull();
+    process.env.NEXT_DEPLOYMENT_ID = '0_7_0-20260914120000-a1b2c3d4';
+    expect(getCurrentVersion().deploymentId).toBe('0_7_0-20260914120000-a1b2c3d4');
   });
 });

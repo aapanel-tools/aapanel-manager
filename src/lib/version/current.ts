@@ -6,6 +6,12 @@ export interface CurrentVersion {
   commit: string | null;
   /** ISO build timestamp baked at build time, if provided. */
   buildTime: string | null;
+  /**
+   * The build this server runs, as Next knows it (ADR-0011): set by
+   * scripts/run-next.mjs from the id the build left in .next/. Null when the
+   * server was started without one — a build made without the wrapper, or dev.
+   */
+  deploymentId: string | null;
 }
 
 /**
@@ -23,5 +29,6 @@ export function getCurrentVersion(): CurrentVersion {
   const version = envVersion && envVersion.length > 0 ? envVersion : pkg.version;
   const commit = process.env.APP_COMMIT?.trim() || null;
   const buildTime = process.env.APP_BUILD_TIME?.trim() || null;
-  return {version, commit, buildTime};
+  const deploymentId = process.env.NEXT_DEPLOYMENT_ID?.trim() || null;
+  return {version, commit, buildTime, deploymentId};
 }

@@ -1,14 +1,16 @@
 // Proves a release bundle is migrate-capable and boots. Extracts the tarball,
 // runs `prisma migrate deploy` from it against a throwaway Postgres, starts the
-// app with `next start`, and asserts GET /api/health returns the bundle's
-// version. Exits non-zero on any failure so CI/release fail loudly instead of
-// publishing a broken bundle. Linux/CI only.
+// app the way a server does — `node scripts/run-next.mjs start` — and asserts
+// GET /api/health returns the bundle's version and the deployment id the build
+// left in .next/DEPLOYMENT_ID (ADR-0011). Exits non-zero on any failure so
+// CI/release fail loudly instead of publishing a broken bundle. Linux/CI only.
 //
 // Usage: DATABASE_URL=... node scripts/smoke-release-bundle.mjs <bundle.tar.gz>
 import {execFileSync, spawn} from 'node:child_process';
 import {mkdtempSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {DEPLOYMENT_ID_FILE, readDeploymentId} from './deployment-id.mjs';
 
 const tarball = process.argv[2];
 if (!tarball || !existsSync(tarball)) {
@@ -30,11 +32,21 @@ execFileSync('tar', ['-xzf', tarball, '-C', dir], {stdio: 'inherit'});
 
 const prismaBin = path.join(dir, 'node_modules', '.bin', 'prisma');
 const nextBin = path.join(dir, 'node_modules', '.bin', 'next');
-for (const bin of [prismaBin, nextBin]) {
+const launcher = path.join(dir, 'scripts', 'run-next.mjs');
+for (const bin of [prismaBin, nextBin, launcher]) {
   if (!existsSync(bin)) {
     console.error(`Bundle is missing ${path.relative(dir, bin)} — assembly is incomplete`);
     process.exit(1);
   }
+}
+
+// A bundle built without the wrapper would run without version-skew
+// protection, and every tab open during an update would learn of it only when
+// a button failed.
+const {id: expectedDeploymentId, problem} = readDeploymentId(dir);
+if (!expectedDeploymentId) {
+  console.error(`Bundle ${DEPLOYMENT_ID_FILE} is ${problem} — was it built with \`pnpm build\`?`);
+  process.exit(1);
 }
 
 const runtimeEnv = {
@@ -53,13 +65,13 @@ const runtimeEnv = {
 console.log('Running prisma migrate deploy from the bundle...');
 execFileSync(prismaBin, ['migrate', 'deploy'], {cwd: dir, env: runtimeEnv, stdio: 'inherit'});
 
-console.log(`Starting next start on :${PORT}...`);
-const server = spawn(nextBin, ['start', '-p', PORT], {cwd: dir, env: runtimeEnv, stdio: 'inherit'});
+console.log(`Starting run-next.mjs start on :${PORT} (deployment id ${expectedDeploymentId})...`);
+const server = spawn(process.execPath, [launcher, 'start'], {cwd: dir, env: runtimeEnv, stdio: 'inherit'});
 
 let exitCode = 1;
 try {
-  await waitForHealth(`http://127.0.0.1:${PORT}/api/health`, expectedVersion);
-  console.log('Smoke test passed: bundle migrates, boots, and /api/health reports the version.');
+  await waitForHealth(`http://127.0.0.1:${PORT}/api/health`, expectedVersion, expectedDeploymentId);
+  console.log('Smoke test passed: bundle migrates, boots, and /api/health reports its version and deployment id.');
   exitCode = 0;
 } catch (err) {
   console.error(`Smoke test failed: ${err instanceof Error ? err.message : err}`);
@@ -69,7 +81,7 @@ try {
 }
 process.exit(exitCode);
 
-async function waitForHealth(url, expectedVersion, timeoutMs = 60_000) {
+async function waitForHealth(url, expectedVersion, expectedDeploymentId, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
   let lastErr = 'no response';
   while (Date.now() < deadline) {
@@ -80,6 +92,11 @@ async function waitForHealth(url, expectedVersion, timeoutMs = 60_000) {
         if (body?.ok !== true) throw new Error(`health not ok: ${JSON.stringify(body)}`);
         if (body.version !== expectedVersion) {
           throw new Error(`version mismatch: bundle ${expectedVersion}, /api/health ${body.version}`);
+        }
+        if (body.deploymentId !== expectedDeploymentId) {
+          throw new Error(
+            `deployment id mismatch: bundle ${expectedDeploymentId}, /api/health ${body.deploymentId}`,
+          );
         }
         return;
       }

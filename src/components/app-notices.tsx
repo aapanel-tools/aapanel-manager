@@ -6,6 +6,7 @@ import {useTranslations} from 'next-intl';
 import {LogIn, RefreshCw} from 'lucide-react';
 import {Button, buttonVariants} from '@/components/ui/button';
 import {appNotices} from '@/components/app-notices-store';
+import {useBuildWatch} from '@/components/use-build-watch';
 
 /**
  * The notices that stay above every page until they stop being true (ADR-0010).
@@ -15,8 +16,16 @@ import {appNotices} from '@/components/app-notices-store';
  * has, which only a reload cures; and a session that ended, which signing in
  * again cures — in a new tab, so that what is typed on this one survives.
  */
-export function AppNotices() {
+export interface AppNoticesProps {
+  /** The build that rendered this page, from the server; null when it has no id (ADR-0011). */
+  buildId: string | null;
+}
+
+export function AppNotices({buildId}: AppNoticesProps) {
   const t = useTranslations('notices');
+  // Learns about an update when the reader comes back to the tab, before the
+  // first button fails (ADR-0011).
+  useBuildWatch(buildId);
   const {outdated, sessionEnded} = useSyncExternalStore(
     appNotices.subscribe,
     appNotices.getSnapshot,

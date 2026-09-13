@@ -129,10 +129,16 @@ export function launchGitUpdate(opts: {webDir: string; logPath: string; kind: 'u
   const out = openSync(logPath, 'a');
   try {
     const tsxCli = path.join(webDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    // The running server keeps its own build's deployment id in its environment;
+    // handed on as-is, the update's build would start from the old id (ADR-0011).
+    // scripts/run-next.mjs sets a new one over it anyway — this keeps the runner
+    // from carrying a value that describes a build it is about to replace.
+    const env = {...process.env};
+    delete env.NEXT_DEPLOYMENT_ID;
     const child = spawn(
       process.execPath,
       [tsxCli, '--env-file-if-exists=.env', '--tsconfig', 'tsconfig.worker.json', 'scripts/git-self-update.ts', kind, target],
-      {cwd: webDir, detached: true, stdio: ['ignore', out, out], env: process.env},
+      {cwd: webDir, detached: true, stdio: ['ignore', out, out], env},
     );
     child.unref();
   } finally {

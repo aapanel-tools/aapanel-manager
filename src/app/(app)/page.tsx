@@ -20,17 +20,23 @@ import {AttentionList} from '@/components/overview/attention-list';
  * customer machine at once, and the poller has already asked; asking again
  * would be both slower and ruder (ADR-0004).
  *
- * The four reads run in parallel because none depends on another, and the page
- * is only as fast as its slowest one.
+ * The reads run in parallel because none depends on another, and the page is
+ * only as fast as its slowest one.
  */
 export default async function Home() {
-  await requireUser();
+  const user = await requireUser();
+  // Running jobs and the journal both say who did what to which customer's
+  // machine, and both of their own pages are an administrator's
+  // (jobs/page.tsx, audit/page.tsx). The summary must not be a side door to
+  // them (Д-28). For a viewer they are not fetched at all: rows hidden in the
+  // markup would still travel to the browser inside the page's payload.
+  const isAdmin = user.role === 'admin';
   const t = await getTranslations('fleet');
 
   const [overview, active, recent] = await Promise.all([
     getFleetOverview(),
-    listJobs(jobListParamsSchema.parse({status: 'active', pageSize: '10'})),
-    listAuditLog(auditListParamsSchema.parse({pageSize: '10'})),
+    isAdmin ? listJobs(jobListParamsSchema.parse({status: 'active', pageSize: '10'})) : null,
+    isAdmin ? listAuditLog(auditListParamsSchema.parse({pageSize: '10'})) : null,
   ]);
 
   return (
@@ -49,65 +55,67 @@ export default async function Home() {
         <AttentionList rows={overview.attention} staleAfterMs={overview.thresholds.staleAfterMs} />
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="space-y-2">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-medium text-muted-foreground">{t('active.title')}</h2>
-            <Link href={'/jobs' as Route} className="text-xs text-muted-foreground hover:underline">
-              {t('active.all')}
-            </Link>
-          </div>
-          {active.rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('active.none')}</p>
-          ) : (
-            <ul className="divide-y divide-foreground/10 rounded-xl bg-card ring-1 ring-foreground/10">
-              {active.rows.map((j) => (
-                <li key={j.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <Link href={`/jobs/${j.id}` as Route} className="truncate text-sm hover:underline">
-                    {j.kind}
-                  </Link>
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    {t('active.progress', {done: j.succeeded + j.failed + j.skipped, total: j.total})}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="space-y-2">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-medium text-muted-foreground">{t('recent.title')}</h2>
-            <Link href={'/audit' as Route} className="text-xs text-muted-foreground hover:underline">
-              {t('recent.all')}
-            </Link>
-          </div>
-          {recent.rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('recent.none')}</p>
-          ) : (
-            <ul className="divide-y divide-foreground/10 rounded-xl bg-card ring-1 ring-foreground/10">
-              {recent.rows.map((a) => (
-                <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <div className="min-w-0 text-sm">
-                    <span className={a.result === 'ok' ? '' : 'text-red-600 dark:text-red-400'}>
-                      {a.action}
+      {active && recent ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="space-y-2">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-sm font-medium text-muted-foreground">{t('active.title')}</h2>
+              <Link href={'/jobs' as Route} className="text-xs text-muted-foreground hover:underline">
+                {t('active.all')}
+              </Link>
+            </div>
+            {active.rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('active.none')}</p>
+            ) : (
+              <ul className="divide-y divide-foreground/10 rounded-xl bg-card ring-1 ring-foreground/10">
+                {active.rows.map((j) => (
+                  <li key={j.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <Link href={`/jobs/${j.id}` as Route} className="truncate text-sm hover:underline">
+                      {j.kind}
+                    </Link>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {t('active.progress', {done: j.succeeded + j.failed + j.skipped, total: j.total})}
                     </span>
-                    {/* A deleted server leaves its lines behind on purpose: the
-                        journal is evidence, and evidence that disappears with
-                        its subject proves nothing. */}
-                    {a.serverName ? (
-                      <span className="ml-2 text-muted-foreground">{a.serverName}</span>
-                    ) : null}
-                  </div>
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    {formatTimestamp(a.createdAt)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-sm font-medium text-muted-foreground">{t('recent.title')}</h2>
+              <Link href={'/audit' as Route} className="text-xs text-muted-foreground hover:underline">
+                {t('recent.all')}
+              </Link>
+            </div>
+            {recent.rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('recent.none')}</p>
+            ) : (
+              <ul className="divide-y divide-foreground/10 rounded-xl bg-card ring-1 ring-foreground/10">
+                {recent.rows.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="min-w-0 text-sm">
+                      <span className={a.result === 'ok' ? '' : 'text-red-600 dark:text-red-400'}>
+                        {a.action}
+                      </span>
+                      {/* A deleted server leaves its lines behind on purpose: the
+                          journal is evidence, and evidence that disappears with
+                          its subject proves nothing. */}
+                      {a.serverName ? (
+                        <span className="ml-2 text-muted-foreground">{a.serverName}</span>
+                      ) : null}
+                    </div>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {formatTimestamp(a.createdAt)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

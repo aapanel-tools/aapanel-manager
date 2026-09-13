@@ -118,6 +118,7 @@
     "netUp": "Upload",
     "netDown": "Download",
     "offline": "Server is offline",
+    "loadFailed": "Could not get the readings",
     "retry": "Retry",
     "lastUpdated": "Last updated"
   },
@@ -402,6 +403,11 @@
     "sessionEnded": "Your session has ended. Sign in in a new tab — what you typed on this page will stay — then repeat the action.",
     "signIn": "Sign in in a new tab",
     "dismiss": "Hide"
+  },
+  "stale": {
+    "title": "Refresh failed — showing data from {when} UTC",
+    "titleNoTime": "Refresh failed — showing the data loaded with the page",
+    "deleteBlocked": "Deleting is unavailable until the list refreshes."
   },
   "fieldError": {
     "required": "Fill in this field",

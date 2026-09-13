@@ -26,6 +26,7 @@ import {ProjectLogsDialog} from '@/components/servers/detail/project-logs-dialog
 import {ProjectFormDialog} from '@/components/servers/detail/project-form-dialog';
 import {ProjectDeleteDialog} from '@/components/servers/detail/project-delete-dialog';
 import {FailureNotice} from '@/components/failure-notice';
+import {StaleNotice} from '@/components/stale-notice';
 import {cpuText} from '@/components/servers/metric-text';
 
 export interface ProjectsTableProps {
@@ -50,8 +51,10 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   // Manual refresh, the post-operation refresh and the background poll all go
   // through one place, which is also what keeps a slow answer from painting
   // over a newer one.
-  const {result, search, setSearch, applied, pending, reload, reloadIfIdle} =
-    useSearchableList<ProjectsResult>(initial, (term) => callAction(() => listNodeProjectsAction(id, term), asMessage));
+  const {result, failure, fetchedAt, search, setSearch, applied, pending, reload, reloadIfIdle} =
+    useSearchableList<ProjectsResult>(initial, (term) =>
+      callAction(() => listNodeProjectsAction(id, term), asMessage),
+    );
 
   // Deliberately separate from the list's own pending flag. Starting or
   // stopping a project must grey out that row's buttons; a poll landing every
@@ -134,10 +137,19 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
     />
   );
 
+  // Rows kept on screen after a poll or refresh that brought nothing say how old
+  // they are; deleting from them waits for a good refresh (settle-refresh.ts).
+  // Start, stop and restart stay available: they are reversible, and the panel
+  // acts on the project as it is now, not as the row remembers it.
+  const stale = failure ? (
+    <StaleNotice failure={failure} fetchedAt={fetchedAt} deletingBlocked={isAdmin} />
+  ) : null;
+
   if (projects.length === 0) {
     return (
       <div>
         {header}
+        {stale}
         {partial}
         <p className="text-sm text-muted-foreground">
           {applied ? t('noMatches', {query: applied}) : t('noProjects')}
@@ -149,6 +161,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   return (
     <div>
       {header}
+      {stale}
       {partial}
       <Table>
         <TableHeader>
@@ -247,7 +260,9 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
                         projectName={p.name}
                         onDone={() => void reload()}
                         trigger={
-                          <Button variant="ghost" size="sm" title={t('delete')}>
+                          // Closed while the rows could not be re-read: this
+                          // project may already be gone on the panel.
+                          <Button variant="ghost" size="sm" title={t('delete')} disabled={failure !== null}>
                             <Trash2 />
                             <span className="sr-only">{t('delete')}</span>
                           </Button>

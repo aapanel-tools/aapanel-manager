@@ -31,6 +31,12 @@ export interface FtpUserDialogProps {
   isAdmin: boolean;
   trigger: React.ReactElement;
   onDone: () => void;
+  /**
+   * The list behind this card could not be re-read, so the account shown may no
+   * longer be what the panel has. Deleting waits for a good refresh; switching
+   * the account on or off sends the wanted state and cannot invert a stale one.
+   */
+  listStale?: boolean;
 }
 
 /** Which operation is waiting to be confirmed, if any. */
@@ -49,8 +55,9 @@ type Pending = null | 'toggle' | 'password' | 'delete';
  * scheduler's card does it that way: a dialog inside a dialog reads badly and
  * loses focus.
  */
-export function FtpUserDialog({id, user, isAdmin, trigger, onDone}: FtpUserDialogProps) {
+export function FtpUserDialog({id, user, isAdmin, trigger, onDone, listStale = false}: FtpUserDialogProps) {
   const t = useTranslations('ftp');
+  const tStale = useTranslations('stale');
   const actionError = useActionError();
   const [open, setOpen] = useState(false);
   const [pendingOp, setPendingOp] = useState<Pending>(null);
@@ -178,11 +185,16 @@ export function FtpUserDialog({id, user, isAdmin, trigger, onDone}: FtpUserDialo
                     variant="ghost"
                     size="sm"
                     className="ml-auto text-destructive hover:text-destructive"
+                    disabled={listStale}
                     onClick={() => setPendingOp('delete')}
                   >
                     <Trash2 className="mr-1 h-3.5 w-3.5" />
                     {t('delete')}
                   </Button>
+                  {/* Said in words: a disabled button shows no tooltip. */}
+                  {listStale ? (
+                    <p className="w-full text-right text-xs text-muted-foreground">{tStale('deleteBlocked')}</p>
+                  ) : null}
                 </div>
               ) : (
                 <div

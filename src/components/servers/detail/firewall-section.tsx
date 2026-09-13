@@ -12,6 +12,7 @@ import {Separator} from '@/components/ui/separator';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
 import {ListSearch} from '@/components/servers/detail/list-search';
 import {useSearchableList} from '@/components/servers/detail/use-searchable-list';
+import {settled, settleRefresh} from '@/components/servers/detail/settle-refresh';
 import {
   Table,
   TableBody,
@@ -21,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {FailureNotice} from '@/components/failure-notice';
+import {StaleNotice} from '@/components/stale-notice';
 
 export interface FirewallSectionProps {
   id: string;
@@ -43,17 +45,22 @@ export interface FirewallSectionProps {
  */
 export function FirewallSection({id, initialOverview, initialRules}: FirewallSectionProps) {
   const t = useTranslations('firewall');
-  const [overview, setOverview] = useState<FirewallOverviewResult>(initialOverview);
+  // The summary keeps what it showed when a refresh brings nothing, like the
+  // rules below it (settle-refresh.ts).
+  const [overviewState, setOverviewState] = useState(() => settled(initialOverview));
+  const overview = overviewState.result;
   const [overviewPending, startOverview] = useTransition();
 
-  const {result, search, setSearch, applied, pending, reload} =
+  const {result, failure, fetchedAt, search, setSearch, applied, pending, reload} =
     useSearchableList<FirewallRulesResult>(initialRules, (term) =>
       callAction(() => listFirewallRulesAction(id, term), asMessage),
     );
 
   function refreshAll() {
     startOverview(async () => {
-      setOverview(await callAction(() => getFirewallOverviewAction(id), asMessage));
+      const next = await callAction(() => getFirewallOverviewAction(id), asMessage);
+      const at = new Date();
+      setOverviewState((prev) => settleRefresh(prev, next, at));
     });
     void reload();
   }
@@ -87,6 +94,10 @@ export function FirewallSection({id, initialOverview, initialRules}: FirewallSec
 
   const summary = overview.ok ? (
     <div className="mb-4">
+      {overviewState.failure ? (
+        <StaleNotice failure={overviewState.failure} fetchedAt={overviewState.fetchedAt} />
+      ) : null}
+
       {/* A firewall that is off is a finding about a client's machine, not a
           field in a table — so it is said once, loudly, and only when the panel
           actually said so. `null` means the panel would not answer, and showing
@@ -181,6 +192,9 @@ export function FirewallSection({id, initialOverview, initialRules}: FirewallSec
     );
   }
 
+  // Rules kept on screen after a refresh that brought nothing say how old they are.
+  const stale = failure ? <StaleNotice failure={failure} fetchedAt={fetchedAt} /> : null;
+
   // A rules list that came back short but looks whole is a false statement
   // about what is open on a client's machine (ADR-0003, Д-16).
   const partial = (
@@ -195,6 +209,7 @@ export function FirewallSection({id, initialOverview, initialRules}: FirewallSec
     <div>
       {header}
       {summary}
+      {stale}
       {partial}
 
       {result.rules.length === 0 ? (

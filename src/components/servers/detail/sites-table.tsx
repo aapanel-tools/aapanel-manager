@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {FailureNotice} from '@/components/failure-notice';
+import {StaleNotice} from '@/components/stale-notice';
 
 export interface SitesTableProps {
   id: string;
@@ -39,10 +40,10 @@ export function SitesTable({id, initial}: SitesTableProps) {
   const t = useTranslations('sites');
   // The term is passed to the panel, not applied to what came back: the site
   // being looked for may be one of the rows past the row limit (Д-16).
-  const {result, search, setSearch, applied, pending, reload} = useSearchableList<SiteListResult>(
-    initial,
-    (term) => callAction(() => listSitesAction(id, term), asMessage),
-  );
+  const {result, failure, fetchedAt, search, setSearch, applied, pending, reload} =
+    useSearchableList<SiteListResult>(initial, (term) =>
+      callAction(() => listSitesAction(id, term), asMessage),
+    );
 
   const header = (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -75,6 +76,10 @@ export function SitesTable({id, initial}: SitesTableProps) {
     />
   ) : null;
 
+  // Rows kept on screen after a refresh that brought nothing say how old they
+  // are (settle-refresh.ts). Nothing here deletes, so nothing is closed.
+  const stale = failure ? <StaleNotice failure={failure} fetchedAt={fetchedAt} /> : null;
+
   if (!result.ok) {
     return (
       <div>
@@ -88,6 +93,7 @@ export function SitesTable({id, initial}: SitesTableProps) {
     return (
       <div>
         {header}
+        {stale}
         {partial}
         {/* "No sites" is a claim about the server, and it is only true when
             every source answered. With a failure standing, the same words are
@@ -107,6 +113,7 @@ export function SitesTable({id, initial}: SitesTableProps) {
   return (
     <div>
       {header}
+      {stale}
       {partial}
       <Table>
         <TableHeader>

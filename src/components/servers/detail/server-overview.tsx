@@ -8,7 +8,10 @@ import {getServerMetricsAction} from '@/server/actions/projects';
 import type {MetricsResult} from '@/server/actions/projects';
 import {callAction, asMessage} from '@/components/call-action';
 import type {ServerMetrics} from '@/lib/aapanel';
-import {useActionError} from '@/components/use-action-error';
+import {actionErrorCode, useActionError} from '@/components/use-action-error';
+import {StaleNotice} from '@/components/stale-notice';
+import {formatTimestamp} from '@/lib/format/datetime';
+import {settled, settleRefresh, type Settled} from './settle-refresh';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,8 +36,11 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
   const t = useTranslations('overview');
   const actionError = useActionError();
 
-  const [result, setResult] = useState<MetricsResult>(initial);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // The newest readings with data, why the latest poll brought nothing, and when
+  // the readings on screen arrived. A poll that fails no longer wipes them: at
+  // one every four seconds, a brief drop in the connection used to blank the
+  // whole summary (settle-refresh.ts).
+  const [state, setState] = useState<Settled<MetricsResult>>(() => settled(initial));
 
   // Guard against overlapping fetches and post-unmount state updates.
   const inFlightRef = useRef(false);
@@ -42,10 +48,13 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
 
   useEffect(() => {
     mountedRef.current = true;
-    // Stamp "last updated" only after mount (client-only). Rendering a live clock
-    // during render would differ between SSR and hydration → hydration mismatch.
+    // Stamp the readings the page arrived with only after mount (client-only):
+    // a clock read during render differs between SSR and hydration. Only
+    // readings get a time — a refusal is not something that was "updated".
     const stampTimer = setTimeout(() => {
-      if (mountedRef.current) setLastUpdated(new Date());
+      if (!mountedRef.current) return;
+      const at = new Date();
+      setState((s) => (s.result.ok && s.fetchedAt === null ? {...s, fetchedAt: at} : s));
     }, 0);
 
     const tick = async () => {
@@ -57,8 +66,8 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
       try {
         const next = await callAction(() => getServerMetricsAction(id), asMessage);
         if (mountedRef.current) {
-          setResult(next);
-          setLastUpdated(new Date());
+          const at = new Date();
+          setState((prev) => settleRefresh(prev, next, at));
         }
       } finally {
         inFlightRef.current = false;
@@ -80,26 +89,40 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
     try {
       const next = await callAction(() => getServerMetricsAction(id), asMessage);
       if (!mountedRef.current) return;
-      setResult(next);
-      setLastUpdated(new Date());
+      const at = new Date();
+      setState((prev) => settleRefresh(prev, next, at));
     } finally {
       inFlightRef.current = false;
     }
   };
 
+  const {result, failure, fetchedAt} = state;
+
+  // The time of the last readings that arrived — not of the last attempt, which
+  // is what this line used to show, failed polls included.
+  const stamp = (
+    <p className="text-xs text-muted-foreground">
+      {t('lastUpdated')}: {fetchedAt ? `${formatTimestamp(fetchedAt)} UTC` : '—'}
+    </p>
+  );
+
   // Render error / offline state
   if (!result.ok) {
+    // "The server is unavailable" is a claim about someone's machine, and only
+    // the panel's own refusal supports it — a finished sentence from
+    // presentError(). A code is about this app instead: the connection to it,
+    // its build, the session. Blaming the server for those sent operators
+    // looking for an outage that was not there.
+    const panelRefused = actionErrorCode(result.message) === null;
     return (
       <div className="space-y-4 rounded-xl border p-6">
         <p className="text-sm text-destructive">
-          {t('offline')} — {actionError(result.message)}
+          {panelRefused ? t('offline') : t('loadFailed')} — {actionError(result.message)}
         </p>
         <Button onClick={() => void handleRetry()} size="sm">
           {t('retry')}
         </Button>
-        <p className="text-xs text-muted-foreground">
-          {t('lastUpdated')}: {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}
-        </p>
+        {stamp}
       </div>
     );
   }
@@ -108,6 +131,8 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
 
   return (
     <div className="space-y-6">
+      {failure ? <StaleNotice failure={failure} fetchedAt={fetchedAt} className="mb-0" /> : null}
+
       {/* Metric bars */}
       <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-3">
         <div className="rounded-xl border p-4">
@@ -160,9 +185,7 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
       </div>
 
       {/* Last updated */}
-      <p className="text-xs text-muted-foreground">
-        {t('lastUpdated')}: {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}
-      </p>
+      {stamp}
     </div>
   );
 }

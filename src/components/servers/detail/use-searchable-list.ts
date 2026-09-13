@@ -1,6 +1,7 @@
 'use client';
 
 import {useCallback, useEffect, useRef, useState} from 'react';
+import {settled, settleRefresh, type Settled} from '@/components/servers/detail/settle-refresh';
 
 /**
  * Quiet time after the last keystroke before the panel is asked.
@@ -30,6 +31,14 @@ export interface SearchableList<T> {
   /** True while a request for this list is out. */
   pending: boolean;
   /**
+   * Why the latest refresh brought nothing while the rows on screen stayed, or
+   * null when they are the latest answer. Only set when there were rows to keep:
+   * a list that never loaded shows its refusal in `result`, as before.
+   */
+  failure: string | null;
+  /** When the rows on screen were fetched in this tab; null for the rows the page arrived with. */
+  fetchedAt: Date | null;
+  /**
    * Re-reads the list with the term currently in the box.
    *
    * Resolves when the answer has landed, so a caller that has just started or
@@ -56,19 +65,26 @@ export interface SearchableList<T> {
  * page the operator can already see, and the rows worth finding are the ones
  * past the row limit (Д-16).
  *
+ * A refresh that brings nothing keeps the rows already on screen and reports
+ * why in `failure` (settle-refresh.ts). A poll used to wipe the table on a
+ * one-second drop in the connection and bring it back only at the next good
+ * answer; the section now says the rows are not fresh instead.
+ *
  * `load` is held in a ref rather than listed as a dependency, so a caller who
  * builds it inline gets correct behaviour instead of a refetch loop.
  */
-export function useSearchableList<T>(
+export function useSearchableList<T extends {ok: boolean}>(
   initial: T,
   load: (search: string) => Promise<T>,
 ): SearchableList<T> {
-  const [result, setResult] = useState<T>(initial);
+  const [state, setState] = useState<Settled<T>>(() => settled(initial));
   const [search, setSearch] = useState('');
   const [applied, setApplied] = useState('');
   const [pending, setPending] = useState(false);
 
   const loadRef = useRef(load);
+  /** Mirrors `state` for the async request, which must decide from the latest one. */
+  const stateRef = useRef(state);
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
@@ -96,9 +112,15 @@ export function useSearchableList<T>(
       // once and the slowest is not the truest: without this the list settles
       // on results for a term that is no longer in the box.
       if (mountedRef.current && reqId === reqIdRef.current) {
-        appliedRef.current = term;
-        setResult(next);
-        setApplied(term);
+        const settledState = settleRefresh(stateRef.current, next, new Date());
+        stateRef.current = settledState;
+        setState(settledState);
+        // Rows kept after a failed refresh still belong to the term they were
+        // fetched with, so the term moves only when the rows do.
+        if (settledState.result === next) {
+          appliedRef.current = term;
+          setApplied(term);
+        }
       }
     } finally {
       // Only the newest request may declare the list idle; an older one
@@ -131,5 +153,15 @@ export function useSearchableList<T>(
     if (!inFlightRef.current) void reload();
   }, [reload]);
 
-  return {result, search, setSearch, applied, pending, reload, reloadIfIdle};
+  return {
+    result: state.result,
+    failure: state.failure,
+    fetchedAt: state.fetchedAt,
+    search,
+    setSearch,
+    applied,
+    pending,
+    reload,
+    reloadIfIdle,
+  };
 }

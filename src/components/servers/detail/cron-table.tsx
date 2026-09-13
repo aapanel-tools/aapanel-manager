@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {FailureNotice} from '@/components/failure-notice';
+import {StaleNotice} from '@/components/stale-notice';
 
 export interface CronTableProps {
   id: string;
@@ -48,10 +49,10 @@ export interface CronTableProps {
  */
 export function CronTable({id, initial, isAdmin}: CronTableProps) {
   const t = useTranslations('cron');
-  const {result, search, setSearch, applied, pending, reload} = useSearchableList<CronListResult>(
-    initial,
-    (term) => callAction(() => listCronTasksAction(id, term), asMessage),
-  );
+  const {result, failure, fetchedAt, search, setSearch, applied, pending, reload} =
+    useSearchableList<CronListResult>(initial, (term) =>
+      callAction(() => listCronTasksAction(id, term), asMessage),
+    );
 
   const header = (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -82,6 +83,12 @@ export function CronTable({id, initial, isAdmin}: CronTableProps) {
     />
   ) : null;
 
+  // Rows kept on screen after a refresh that brought nothing say how old they
+  // are; deleting from them waits for a good refresh (settle-refresh.ts).
+  const stale = failure ? (
+    <StaleNotice failure={failure} fetchedAt={fetchedAt} deletingBlocked={isAdmin} />
+  ) : null;
+
   if (!result.ok) {
     return (
       <div>
@@ -95,6 +102,7 @@ export function CronTable({id, initial, isAdmin}: CronTableProps) {
     return (
       <div>
         {header}
+        {stale}
         {partial}
         {/* "No scheduled tasks" is a claim about the server, and it is only
             true when the panel actually answered. With a search running it is
@@ -112,6 +120,7 @@ export function CronTable({id, initial, isAdmin}: CronTableProps) {
   return (
     <div>
       {header}
+      {stale}
       {partial}
       <Table>
         <TableHeader>
@@ -161,6 +170,7 @@ export function CronTable({id, initial, isAdmin}: CronTableProps) {
                   id={id}
                   task={task}
                   isAdmin={isAdmin}
+                  listStale={failure !== null}
                   // After anything changes, the list is re-read rather than
                   // patched in place: the panel is the truth, and a row edited
                   // locally to look right is a guess about someone else's

@@ -36,6 +36,12 @@ export interface CronTaskDialogProps {
   trigger: React.ReactElement;
   /** Re-reads the list, so the row behind this card stops showing the old state. */
   onDone: () => void;
+  /**
+   * The list behind this card could not be re-read, so the task shown may no
+   * longer be what the panel has. Deleting waits for a good refresh; running and
+   * toggling do not — the server re-reads the real state for those.
+   */
+  listStale?: boolean;
 }
 
 /** Which operation is waiting to be confirmed, if any. */
@@ -63,8 +69,9 @@ type Pending = null | 'run' | 'toggle' | 'delete';
  *   delete  — irreversible, so the task's name has to be typed, and the server
  *             checks the typed phrase again rather than trusting this form
  */
-export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDialogProps) {
+export function CronTaskDialog({id, task, isAdmin, trigger, onDone, listStale = false}: CronTaskDialogProps) {
   const t = useTranslations('cron');
+  const tStale = useTranslations('stale');
   // Refusals of the action's own — wrong role, a confirmation that did not
   // match — come back as codes and are put into words in one shared place.
   const actionError = useActionError();
@@ -285,11 +292,16 @@ export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDia
                     variant="ghost"
                     size="sm"
                     className="ml-auto text-destructive hover:text-destructive"
+                    disabled={listStale}
                     onClick={() => setPendingOp('delete')}
                   >
                     <Trash2 className="mr-1 h-3.5 w-3.5" />
                     {t('delete')}
                   </Button>
+                  {/* Said in words: a disabled button shows no tooltip. */}
+                  {listStale ? (
+                    <p className="w-full text-right text-xs text-muted-foreground">{tStale('deleteBlocked')}</p>
+                  ) : null}
                 </div>
               ) : (
                 <div

@@ -23,6 +23,7 @@ import {useSearchableList} from '@/components/servers/detail/use-searchable-list
 import {DatabaseFormDialog} from '@/components/servers/detail/database-form-dialog';
 import {DatabaseDeleteDialog} from '@/components/servers/detail/database-delete-dialog';
 import {FailureNotice} from '@/components/failure-notice';
+import {StaleNotice} from '@/components/stale-notice';
 
 export interface DatabasesTableProps {
   id: string;
@@ -37,10 +38,10 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
   // Search goes to both engines through the action; the engine filter below
   // stays in the browser. They answer different questions: one narrows what
   // the panel looks through, the other hides half of what it returned.
-  const {result, search, setSearch, applied, pending, reload} = useSearchableList<DbListResult>(
-    initial,
-    (term) => callAction(() => listDatabasesAction(id, term), asMessage),
-  );
+  const {result, failure, fetchedAt, search, setSearch, applied, pending, reload} =
+    useSearchableList<DbListResult>(initial, (term) =>
+      callAction(() => listDatabasesAction(id, term), asMessage),
+    );
   const [engineFilter, setEngineFilter] = useState<EngineFilter>('all');
 
   const refetch = () => void reload();
@@ -98,6 +99,12 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
     />
   ) : null;
 
+  // Rows kept on screen after a refresh that brought nothing say how old they
+  // are; deleting from them waits for a good refresh (settle-refresh.ts).
+  const stale = failure ? (
+    <StaleNotice failure={failure} fetchedAt={fetchedAt} deletingBlocked={isAdmin} />
+  ) : null;
+
   if (!result.ok) {
     return (
       <div>
@@ -132,6 +139,7 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
     return (
       <div>
         {header}
+        {stale}
         {partial}
         {/* Same reasoning as the sites table: with an engine still owing an
             answer, "no databases" states as fact what the app does not know.
@@ -147,6 +155,7 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
   return (
     <div>
       {header}
+      {stale}
       {partial}
       <Table>
         <TableHeader>
@@ -187,7 +196,9 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
                       id={id}
                       database={db}
                       trigger={
-                        <Button variant="ghost" size="sm" aria-label={t('delete')}>
+                        // Closed while the rows could not be re-read: this one
+                        // may already be gone or renamed on the panel.
+                        <Button variant="ghost" size="sm" aria-label={t('delete')} disabled={failure !== null}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       }

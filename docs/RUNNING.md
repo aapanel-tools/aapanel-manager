@@ -60,8 +60,14 @@ even if you run several app replicas.
 ```bash
 pnpm install --frozen-lockfile
 pnpm prisma migrate deploy   # apply pending migrations (no prompt, no seed)
-pnpm build                   # Next.js standalone output → .next/standalone/
+pnpm build                   # production build → .next/
 ```
+
+The app is started with `node scripts/run-next.mjs start` from the repository
+root — the same command the Docker image and the release bundle use. It loads
+`.env` from the working directory and runs `next start`. There is no standalone
+output (see the comment in `next.config.ts`): `.next/standalone/server.js` does
+not exist.
 
 ### Option A — pm2
 
@@ -75,12 +81,10 @@ module.exports = {
   apps: [
     {
       name: 'aapanel-web',
-      script: 'node',
-      args: 'server.js',
-      cwd: '.next/standalone',
-      env_file: '.env',
-      // Next.js standalone ignores NODE_ENV from env_file in some versions;
-      // set it explicitly here too:
+      script: 'scripts/run-next.mjs',
+      args: 'start',
+      cwd: __dirname,
+      // run-next.mjs reads .env from cwd; these win over it.
       env: { NODE_ENV: 'production', PORT: '3000' },
     },
   ],
@@ -105,11 +109,11 @@ After=network.target postgresql.service
 [Service]
 Type=simple
 User=nodeapp
-WorkingDirectory=/srv/aapanel/.next/standalone
+WorkingDirectory=/srv/aapanel
 EnvironmentFile=/srv/aapanel/.env
 Environment=NODE_ENV=production
 Environment=PORT=3000
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/node scripts/run-next.mjs start
 Restart=always
 RestartSec=5
 
@@ -187,7 +191,7 @@ ENABLE_POLLER=true
 | Script | What it does |
 |--------|-------------|
 | `pnpm dev` | Start dev server (hot-reload) |
-| `pnpm build` | Production build (Next.js standalone) |
+| `pnpm build` | Production build (`.next/`) |
 | `pnpm start` | Start production server |
 | `pnpm worker` | Start an *optional* dedicated poller (the app polls in-process by default) |
 | `pnpm lint` | Run ESLint |

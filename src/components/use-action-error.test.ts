@@ -1,5 +1,5 @@
 import {readFileSync, readdirSync} from 'node:fs';
-import {join} from 'node:path';
+import {join, relative, sep} from 'node:path';
 import {describe, it, expect} from 'vitest';
 
 import en from '../../messages/en.json';
@@ -114,5 +114,73 @@ describe('every refusal an action can return', () => {
     // Listed rather than counted: the message has to name the code and the file,
     // or whoever added it has to go looking.
     expect(unknown).toEqual([]);
+  });
+});
+
+/**
+ * Places where an action's answer may reach a person without being put into
+ * words, each with the reason it is allowed to.
+ *
+ * Keyed by file and expression. A new entry needs a reason that would survive
+ * someone asking "why is this one not translated" a year from now.
+ */
+const UNTRANSLATED_ON_PURPOSE: Record<string, string> = {
+  'src/components/overview/attention-list.tsx: r.error':
+    "the poller's stored English sentence (ServerStatus.error), not an action's refusal — kept in one language on purpose, see Д-21",
+  'src/components/servers/server-form-dialog.tsx: res.message':
+    'the connection probe’s technical summary on success, not a refusal — recorded as Д-29',
+};
+
+describe('every place a component shows what an action said', () => {
+  it('puts it into words first', () => {
+    // Д-23 checked what actions refuse with; this checks where those refusals
+    // go. The first version of this test did not exist, and 25 places printed
+    // `unauthenticated` or `forbidden` straight onto the screen (Д-26).
+    //
+    // Three positions count: a JSX child, a toast, and a state setter — once a
+    // raw code is in state, it is rendered from a variable no pattern can
+    // follow, so the rule is to translate before storing. An attribute is not
+    // a position: it hands the value to a component, and the one component
+    // that takes an action's message (FailureNotice) translates it itself.
+    const positions: Array<{where: string; pattern: RegExp}> = [
+      {where: 'rendered', pattern: /(?<![=\w])\{\s*([\w.?!]+\.(?:message|error))\s*\}/g},
+      {where: 'toasted', pattern: /\btoast\.\w+\(\s*([\w.?!]+\.(?:message|error))\s*[,)]/g},
+      {where: 'stored', pattern: /\bset[A-Z]\w*\(\s*([\w.?!]+\.(?:message|error))\s*\)/g},
+    ];
+
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, {withFileTypes: true})) {
+        const full = join(dir, entry.name);
+        // The UI kit never receives an action's answer; its `error.message` is
+        // a form library's own object.
+        if (entry.isDirectory()) {
+          if (full.endsWith(join('components', 'ui'))) continue;
+          walk(full);
+        } else if (entry.name.endsWith('.tsx')) {
+          files.push(full);
+        }
+      }
+    };
+    walk(join(process.cwd(), 'src', 'components'));
+    walk(join(process.cwd(), 'src', 'app'));
+    expect(files.length).toBeGreaterThan(50);
+
+    const raw: string[] = [];
+    for (const file of files) {
+      const rel = relative(process.cwd(), file).split(sep).join('/');
+      const lines = readFileSync(file, 'utf8').split('\n');
+      lines.forEach((line, index) => {
+        for (const {where, pattern} of positions) {
+          for (const match of line.matchAll(pattern)) {
+            const key = `${rel}: ${match[1]!}`;
+            if (key in UNTRANSLATED_ON_PURPOSE) continue;
+            raw.push(`${rel}:${index + 1} ${where} ${match[1]!}`);
+          }
+        }
+      });
+    }
+
+    expect(raw).toEqual([]);
   });
 });

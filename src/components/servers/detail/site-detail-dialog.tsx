@@ -16,6 +16,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
+import {FailureNotice} from '@/components/failure-notice';
+import {useActionError} from '@/components/use-action-error';
 
 export interface SiteDetailDialogProps {
   id: string;
@@ -38,6 +40,9 @@ export interface SiteDetailDialogProps {
  */
 export function SiteDetailDialog({id, site, trigger}: SiteDetailDialogProps) {
   const t = useTranslations('sites');
+  // Refusals are put into words before they are stored: once a code sits in
+  // state it is rendered from a variable nothing can check (Д-26).
+  const actionError = useActionError();
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<SiteDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +59,7 @@ export function SiteDetailDialog({id, site, trigger}: SiteDetailDialogProps) {
         setError(null);
       } else {
         setDetail(null);
-        setError(res.message);
+        setError(actionError(res.message));
       }
     });
   }
@@ -67,7 +72,7 @@ export function SiteDetailDialog({id, site, trigger}: SiteDetailDialogProps) {
         setLogsError(null);
       } else {
         setLogs(null);
-        setLogsError(res.message);
+        setLogsError(actionError(res.message));
       }
     });
   }
@@ -97,13 +102,7 @@ export function SiteDetailDialog({id, site, trigger}: SiteDetailDialogProps) {
         </DialogHeader>
 
         {error && (
-          <div
-            className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
-            role="alert"
-          >
-            <p className="font-medium">{t('detailFailed')}</p>
-            <p className="mt-1 text-xs opacity-80">{error}</p>
-          </div>
+          <FailureNotice title={t('detailFailed')} message={error} className="p-3" />
         )}
 
         {pending && !detail && <p className="text-sm text-muted-foreground">{t('loading')}</p>}

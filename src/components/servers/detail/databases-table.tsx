@@ -21,6 +21,7 @@ import {ListSearch} from '@/components/servers/detail/list-search';
 import {useSearchableList} from '@/components/servers/detail/use-searchable-list';
 import {DatabaseFormDialog} from '@/components/servers/detail/database-form-dialog';
 import {DatabaseDeleteDialog} from '@/components/servers/detail/database-delete-dialog';
+import {FailureNotice} from '@/components/failure-notice';
 
 export interface DatabasesTableProps {
   id: string;
@@ -100,13 +101,7 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
     return (
       <div>
         {header}
-        <div
-          className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
-          role="alert"
-        >
-          <p className="font-medium">{t('loadFailed')}</p>
-          <p className="mt-1 text-xs opacity-80">{result.message}</p>
-        </div>
+        <FailureNotice title={t('loadFailed')} message={result.message} />
       </div>
     );
   }

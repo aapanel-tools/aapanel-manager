@@ -4,6 +4,7 @@ import {useCallback, useEffect, useRef, useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {RefreshCw} from 'lucide-react';
 import {getProjectLogsAction} from '@/server/actions/projects';
+import {useActionError} from '@/components/use-action-error';
 import {Button} from '@/components/ui/button';
 import {Label} from '@/components/ui/label';
 import {Switch} from '@/components/ui/switch';
@@ -36,6 +37,7 @@ const PIN_THRESHOLD_PX = 40;
  */
 export function ProjectLogsDialog({id, project, trigger}: ProjectLogsDialogProps) {
   const t = useTranslations('projects');
+  const actionError = useActionError();
   const [open, setOpen] = useState(false);
   const [logs, setLogs] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,13 +69,14 @@ export function ProjectLogsDialog({id, project, trigger}: ProjectLogsDialogProps
         setLogs(res.logs);
         setError(null);
       } else {
-        // Keep the last good log on a transient poll failure; surface the error.
-        setError(res.message);
+        // Keep the last good log on a transient poll failure; surface the error,
+        // put into words before it is stored (Д-26).
+        setError(actionError(res.message));
       }
     } finally {
       inFlightRef.current = false;
     }
-  }, [id, project]);
+  }, [id, project, actionError]);
 
   // Live polling: only while open + live + tab visible, never overlapping.
   useEffect(() => {

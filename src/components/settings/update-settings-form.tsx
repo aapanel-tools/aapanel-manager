@@ -73,7 +73,7 @@ export function UpdateSettingsForm({settings}: UpdateSettingsFormProps) {
         <CardContent className="space-y-5">
           {!result.ok && result.error && result.error !== 'validation' ? (
             <p className="text-sm text-destructive" role="alert">
-              {result.error}
+              {actionError(result.error)}
             </p>
           ) : null}
 

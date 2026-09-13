@@ -4,6 +4,7 @@ import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {Folder, ArrowUp, Loader2} from 'lucide-react';
 import {listDirAction} from '@/server/actions/projects';
+import {useActionError} from '@/components/use-action-error';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {
@@ -53,6 +54,7 @@ export interface DirectoryPickerDialogProps {
  */
 export function DirectoryPickerDialog({serverId, initialPath, trigger, onSelect}: DirectoryPickerDialogProps) {
   const t = useTranslations('projects');
+  const actionError = useActionError();
   const [open, setOpen] = useState(false);
   const [currentPath, setCurrentPath] = useState(DEFAULT_PATH);
   const [dirs, setDirs] = useState<string[]>([]);
@@ -67,7 +69,9 @@ export function DirectoryPickerDialog({serverId, initialPath, trigger, onSelect}
         setDirs(res.dirs);
         setError(null);
       } else {
-        setError(res.message);
+        // Put into words before storing: the action refuses a viewer with the
+        // bare code `forbidden` (Д-26).
+        setError(actionError(res.message));
         setDirs([]);
       }
     });

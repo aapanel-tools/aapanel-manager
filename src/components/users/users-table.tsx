@@ -11,6 +11,7 @@ import {UserFormDialog} from '@/components/users/user-form-dialog';
 import {UserEditDialog} from '@/components/users/user-edit-dialog';
 import {UserDeleteDialog} from '@/components/users/user-delete-dialog';
 import {formatTimestamp} from '@/lib/format/datetime';
+import {FailureNotice} from '@/components/failure-notice';
 
 export function UsersTable({initial}: {initial: UsersListResult}) {
   const t = useTranslations('users');
@@ -42,13 +43,7 @@ export function UsersTable({initial}: {initial: UsersListResult}) {
     return (
       <div className="space-y-3">
         {header}
-        <div
-          className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
-          role="alert"
-        >
-          <p className="font-medium">{t('loadFailed')}</p>
-          <p className="mt-1 text-xs opacity-80">{result.message}</p>
-        </div>
+        <FailureNotice title={t('loadFailed')} message={result.message} />
       </div>
     );
   }

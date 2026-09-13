@@ -83,7 +83,9 @@ export function BulkProjectDialog({servers, trigger}: BulkProjectDialogProps) {
         reset(false);
         router.push(`/jobs/${res.jobId}` as never);
       } else {
-        setError(res.error);
+        // Put into words before it is stored: a code kept in state is rendered
+        // later from a variable, where nothing can tell it apart from a sentence.
+        setError(queueError(res.error));
       }
     });
   }
@@ -125,7 +127,7 @@ export function BulkProjectDialog({servers, trigger}: BulkProjectDialogProps) {
         <div className="space-y-4">
           {error ? (
             <p className="text-sm text-destructive" role="alert">
-              {queueError(error)}
+              {error}
             </p>
           ) : null}
 

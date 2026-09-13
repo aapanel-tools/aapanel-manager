@@ -78,7 +78,7 @@ export function DatabaseFormDialog({id, trigger, onDone}: DatabaseFormDialogProp
         <form onSubmit={onSubmit} className="space-y-4">
           {!result.ok && result.error && result.error !== 'validation' ? (
             <p className="text-sm text-destructive" role="alert">
-              {result.error}
+              {actionError(result.error)}
             </p>
           ) : null}
 

@@ -86,7 +86,7 @@ export function CronTaskDialog({id, task, isAdmin, trigger, onDone}: CronTaskDia
       } else {
         // The last good output is kept: a failed refresh says nothing about
         // what the task printed the last time anyone could read it.
-        setLogsError(res.message);
+        setLogsError(actionError(res.message));
       }
     });
   }

@@ -29,6 +29,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {DirectoryPickerDialog} from '@/components/servers/detail/directory-picker-dialog';
+import {FailureNotice} from '@/components/failure-notice';
 
 const INITIAL: ProjectMutResult = {ok: false, error: ''};
 
@@ -109,7 +110,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
       if (mode === 'edit' && projectName) {
         const res = await getProjectEditDataAction(serverId, projectName);
         if (!res.ok) {
-          setLoadError(res.message);
+          setLoadError(actionError(res.message));
           return;
         }
         setConfig(res.config);
@@ -133,7 +134,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
       } else {
         const res = await getProjectCreateEnvAction(serverId);
         if (!res.ok) {
-          setLoadError(res.message);
+          setLoadError(actionError(res.message));
           return;
         }
         setPreEnv(res.preEnv);
@@ -163,7 +164,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
       } else {
         setRunScripts([]);
         setScript('');
-        setScriptsError(res.message);
+        setScriptsError(actionError(res.message));
       }
     });
   }
@@ -220,10 +221,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
             {t('loading')}
           </div>
         ) : loadError ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive" role="alert">
-            <p className="font-medium">{t('loadFailed')}</p>
-            <p className="mt-1 text-xs opacity-80">{loadError}</p>
-          </div>
+          <FailureNotice title={t('loadFailed')} message={loadError} />
         ) : dataReady ? (
           <form onSubmit={onSubmit} className="space-y-4">
             {mode === 'edit' && config ? (
@@ -239,7 +237,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
 
             {!result.ok && result.error && result.error !== 'validation' ? (
               <p className="text-sm text-destructive" role="alert">
-                {result.error}
+                {actionError(result.error)}
               </p>
             ) : null}
 

@@ -16,6 +16,7 @@ import {
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {UpdateActions} from './update-actions';
+import {useActionError} from '@/components/use-action-error';
 
 /** Deterministic timestamp (no locale/timezone) to avoid SSR/CSR hydration drift. */
 function fmt(iso: string): string {
@@ -24,6 +25,7 @@ function fmt(iso: string): string {
 
 export function UpdateStatusCard({initial}: {initial: UpdateStatusResult}) {
   const t = useTranslations('updates');
+  const actionError = useActionError();
   const [status, setStatus] = useState<UpdateStatusResult>(initial);
   const [pending, start] = useTransition();
 
@@ -36,7 +38,7 @@ export function UpdateStatusCard({initial}: {initial: UpdateStatusResult}) {
   if (!status.ok) {
     return (
       <Card>
-        <CardContent className="py-4 text-sm text-destructive">{status.message}</CardContent>
+        <CardContent className="py-4 text-sm text-destructive">{actionError(status.message)}</CardContent>
       </Card>
     );
   }
@@ -93,7 +95,7 @@ export function UpdateStatusCard({initial}: {initial: UpdateStatusResult}) {
 
         {s.error ? (
           <p className="text-sm text-destructive" role="alert">
-            {t('checkFailed')}: {s.error}
+            {t('checkFailed')}: {actionError(s.error)}
           </p>
         ) : null}
 

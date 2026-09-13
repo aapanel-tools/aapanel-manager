@@ -26,7 +26,6 @@ import {
 import {FILE_VIEW_MAX_BYTES} from '@/lib/files/viewing';
 import {formatTimestamp} from '@/lib/format/datetime';
 import {cn} from '@/lib/utils';
-import {useActionError} from '@/components/use-action-error';
 import {useFileSize} from '@/components/servers/detail/use-file-size';
 import {FileViewDialog} from '@/components/servers/detail/file-view-dialog';
 import {ListIntegrityNotice} from '@/components/servers/detail/list-integrity-notice';
@@ -39,6 +38,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {FailureNotice} from '@/components/failure-notice';
 
 export interface FileBrowserProps {
   id: string;
@@ -69,7 +69,6 @@ export function filesHref(id: string, path: string): Route {
  */
 export function FileBrowser({id, serverName, path, result}: FileBrowserProps) {
   const t = useTranslations('files');
-  const actionError = useActionError();
   const router = useRouter();
   const [refreshing, startRefresh] = useTransition();
 
@@ -118,13 +117,7 @@ export function FileBrowser({id, serverName, path, result}: FileBrowserProps) {
       <div>
         {header}
         {crumbs}
-        <div
-          className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
-          role="alert"
-        >
-          <p className="font-medium">{t('loadFailed')}</p>
-          <p className="mt-1 text-xs opacity-80">{actionError(result.message)}</p>
-        </div>
+        <FailureNotice title={t('loadFailed')} message={result.message} />
       </div>
     );
   }

@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {FailureNotice} from '@/components/failure-notice';
 
 export interface FirewallSectionProps {
   id: string;
@@ -166,13 +167,7 @@ export function FirewallSection({id, initialOverview, initialRules}: FirewallSec
       </div>
     </div>
   ) : (
-    <div
-      className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
-      role="alert"
-    >
-      <p className="font-medium">{t('summaryFailed')}</p>
-      <p className="mt-1 text-xs opacity-80">{overview.message}</p>
-    </div>
+    <FailureNotice title={t('summaryFailed')} message={overview.message} className="mb-4 p-3" />
   );
 
   if (!result.ok) {
@@ -180,13 +175,7 @@ export function FirewallSection({id, initialOverview, initialRules}: FirewallSec
       <div>
         {header}
         {summary}
-        <div
-          className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
-          role="alert"
-        >
-          <p className="font-medium">{t('loadFailed')}</p>
-          <p className="mt-1 text-xs opacity-80">{result.message}</p>
-        </div>
+        <FailureNotice title={t('loadFailed')} message={result.message} />
       </div>
     );
   }

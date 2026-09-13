@@ -24,6 +24,7 @@ import {
 import {ProjectLogsDialog} from '@/components/servers/detail/project-logs-dialog';
 import {ProjectFormDialog} from '@/components/servers/detail/project-form-dialog';
 import {ProjectDeleteDialog} from '@/components/servers/detail/project-delete-dialog';
+import {FailureNotice} from '@/components/failure-notice';
 
 export interface ProjectsTableProps {
   id: string;
@@ -116,10 +117,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
     return (
       <div>
         {header}
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive" role="alert">
-          <p className="font-medium">{t('loadFailed')}</p>
-          <p className="mt-1 text-xs opacity-80">{result.message}</p>
-        </div>
+        <FailureNotice title={t('loadFailed')} message={result.message} />
       </div>
     );
   }

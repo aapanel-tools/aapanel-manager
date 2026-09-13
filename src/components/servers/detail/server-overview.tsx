@@ -7,6 +7,7 @@ import {MetricBar} from './metric-bar';
 import {getServerMetricsAction} from '@/server/actions/projects';
 import type {MetricsResult} from '@/server/actions/projects';
 import type {ServerMetrics} from '@/lib/aapanel';
+import {useActionError} from '@/components/use-action-error';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,6 +30,7 @@ export interface ServerOverviewProps {
 
 export function ServerOverview({id, initial}: ServerOverviewProps) {
   const t = useTranslations('overview');
+  const actionError = useActionError();
 
   const [result, setResult] = useState<MetricsResult>(initial);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -89,7 +91,7 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
     return (
       <div className="space-y-4 rounded-xl border p-6">
         <p className="text-sm text-destructive">
-          {t('offline')} — {result.message}
+          {t('offline')} — {actionError(result.message)}
         </p>
         <Button onClick={() => void handleRetry()} size="sm">
           {t('retry')}

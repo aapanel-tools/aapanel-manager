@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {FailureNotice} from '@/components/failure-notice';
 
 export interface CronTableProps {
   id: string;
@@ -84,13 +85,7 @@ export function CronTable({id, initial, isAdmin}: CronTableProps) {
     return (
       <div>
         {header}
-        <div
-          className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
-          role="alert"
-        >
-          <p className="font-medium">{t('loadFailed')}</p>
-          <p className="mt-1 text-xs opacity-80">{result.message}</p>
-        </div>
+        <FailureNotice title={t('loadFailed')} message={result.message} />
       </div>
     );
   }

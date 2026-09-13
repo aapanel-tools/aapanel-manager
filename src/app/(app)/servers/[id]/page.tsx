@@ -6,5 +6,7 @@ export default async function OverviewPage({params}: {params: Promise<{id: strin
   await requireUser();
   const {id} = await params;
   const initial = await getServerMetricsAction(id);
-  return <ServerOverview id={id} initial={initial} />;
+  // When the readings were fetched, so "last updated" is the fetch, not the mount (У-8).
+  const fetchedAt = new Date().toISOString();
+  return <ServerOverview id={id} initial={initial} initialFetchedAt={fetchedAt} />;
 }

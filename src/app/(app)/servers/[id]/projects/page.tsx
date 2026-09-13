@@ -6,5 +6,7 @@ export default async function ProjectsPage({params}: {params: Promise<{id: strin
   const user = await requireUser();
   const {id} = await params;
   const initial = await listNodeProjectsAction(id);
-  return <ProjectsTable id={id} initial={initial} isAdmin={user.role === 'admin'} />;
+  // When the rows were fetched, so the section can say how old they are (У-8).
+  const fetchedAt = new Date().toISOString();
+  return <ProjectsTable id={id} initial={initial} initialFetchedAt={fetchedAt} isAdmin={user.role === 'admin'} />;
 }

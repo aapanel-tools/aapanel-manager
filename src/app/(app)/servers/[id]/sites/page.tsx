@@ -6,5 +6,7 @@ export default async function SitesPage({params}: {params: Promise<{id: string}>
   await requireUser();
   const {id} = await params;
   const initial = await listSitesAction(id);
-  return <SitesTable id={id} initial={initial} />;
+  // When the rows were fetched, so the section can say how old they are (У-8).
+  const fetchedAt = new Date().toISOString();
+  return <SitesTable id={id} initial={initial} initialFetchedAt={fetchedAt} />;
 }

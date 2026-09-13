@@ -11,5 +11,9 @@ export default async function FirewallPage({params}: {params: Promise<{id: strin
     getFirewallOverviewAction(id),
     listFirewallRulesAction(id),
   ]);
-  return <FirewallSection id={id} initialOverview={overview} initialRules={rules} />;
+  // When both were fetched, so the section can say how old they are (У-8).
+  const fetchedAt = new Date().toISOString();
+  return (
+    <FirewallSection id={id} initialOverview={overview} initialRules={rules} initialFetchedAt={fetchedAt} />
+  );
 }

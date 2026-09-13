@@ -76,8 +76,15 @@ export interface SearchableList<T> {
 export function useSearchableList<T extends {ok: boolean}>(
   initial: T,
   load: (search: string) => Promise<T>,
+  /**
+   * When the page fetched `initial` on the server, as an ISO string — so the
+   * rows the page arrived with carry their age too (У-8). Null when unknown.
+   */
+  initialFetchedAt: string | null = null,
 ): SearchableList<T> {
-  const [state, setState] = useState<Settled<T>>(() => settled(initial));
+  const [state, setState] = useState<Settled<T>>(() =>
+    settled(initial, initial.ok && initialFetchedAt ? new Date(initialFetchedAt) : null),
+  );
   const [search, setSearch] = useState('');
   const [applied, setApplied] = useState('');
   const [pending, setPending] = useState(false);

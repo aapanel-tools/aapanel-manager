@@ -27,11 +27,14 @@ import {ProjectFormDialog} from '@/components/servers/detail/project-form-dialog
 import {ProjectDeleteDialog} from '@/components/servers/detail/project-delete-dialog';
 import {FailureNotice} from '@/components/failure-notice';
 import {StaleNotice} from '@/components/stale-notice';
+import {DataAge} from '@/components/data-age';
 import {cpuText} from '@/components/servers/metric-text';
 
 export interface ProjectsTableProps {
   id: string;
   initial: ProjectsResult;
+  /** When the page fetched `initial` on the server (ISO), so the rows carry their age (У-8). */
+  initialFetchedAt: string | null;
   isAdmin: boolean;
 }
 
@@ -43,7 +46,7 @@ const OP_TOAST_KEY: Record<ProjectOperation, 'started' | 'stopped_msg' | 'restar
 
 const PROJECTS_POLL_INTERVAL_MS = 12_000;
 
-export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
+export function ProjectsTable({id, initial, initialFetchedAt, isAdmin}: ProjectsTableProps) {
   const t = useTranslations('projects');
   // An action refuses for its own reasons too — wrong role, a form that did
   // not validate — and those arrived as bare English tokens (Д-23).
@@ -52,8 +55,10 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   // through one place, which is also what keeps a slow answer from painting
   // over a newer one.
   const {result, failure, fetchedAt, search, setSearch, applied, pending, reload, reloadIfIdle} =
-    useSearchableList<ProjectsResult>(initial, (term) =>
-      callAction(() => listNodeProjectsAction(id, term), asMessage),
+    useSearchableList<ProjectsResult>(
+      initial,
+      (term) => callAction(() => listNodeProjectsAction(id, term), asMessage),
+      initialFetchedAt,
     );
 
   // Deliberately separate from the list's own pending flag. Starting or
@@ -137,19 +142,21 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
     />
   );
 
-  // Rows kept on screen after a poll or refresh that brought nothing say how old
-  // they are; deleting from them waits for a good refresh (settle-refresh.ts).
+  // How old the rows are: said always (У-8), and by the notice instead when a
+  // poll or refresh failed — deleting from such rows waits for a good refresh.
   // Start, stop and restart stay available: they are reversible, and the panel
   // acts on the project as it is now, not as the row remembers it.
-  const stale = failure ? (
+  const age = failure ? (
     <StaleNotice failure={failure} fetchedAt={fetchedAt} deletingBlocked={isAdmin} />
-  ) : null;
+  ) : (
+    <DataAge fetchedAt={fetchedAt} />
+  );
 
   if (projects.length === 0) {
     return (
       <div>
         {header}
-        {stale}
+        {age}
         {partial}
         <p className="text-sm text-muted-foreground">
           {applied ? t('noMatches', {query: applied}) : t('noProjects')}
@@ -161,7 +168,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   return (
     <div>
       {header}
-      {stale}
+      {age}
       {partial}
       <Table>
         <TableHeader>

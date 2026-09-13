@@ -22,10 +22,13 @@ import {
 } from '@/components/ui/table';
 import {FailureNotice} from '@/components/failure-notice';
 import {StaleNotice} from '@/components/stale-notice';
+import {DataAge} from '@/components/data-age';
 
 export interface CronTableProps {
   id: string;
   initial: CronListResult;
+  /** When the page fetched `initial` on the server (ISO), so the rows carry their age (У-8). */
+  initialFetchedAt: string | null;
   /** Whether the viewer may change anything; the task card hides its controls otherwise. */
   isAdmin: boolean;
 }
@@ -47,11 +50,13 @@ export interface CronTableProps {
  * backup scripts on a hosting panel routinely carry a database password in
  * plain text, and a table puts every one of them on screen at once.
  */
-export function CronTable({id, initial, isAdmin}: CronTableProps) {
+export function CronTable({id, initial, initialFetchedAt, isAdmin}: CronTableProps) {
   const t = useTranslations('cron');
   const {result, failure, fetchedAt, search, setSearch, applied, pending, reload} =
-    useSearchableList<CronListResult>(initial, (term) =>
-      callAction(() => listCronTasksAction(id, term), asMessage),
+    useSearchableList<CronListResult>(
+      initial,
+      (term) => callAction(() => listCronTasksAction(id, term), asMessage),
+      initialFetchedAt,
     );
 
   const header = (
@@ -83,11 +88,13 @@ export function CronTable({id, initial, isAdmin}: CronTableProps) {
     />
   ) : null;
 
-  // Rows kept on screen after a refresh that brought nothing say how old they
-  // are; deleting from them waits for a good refresh (settle-refresh.ts).
-  const stale = failure ? (
+  // How old the rows are: said always (У-8), and by the notice instead when a
+  // refresh failed — deleting from such rows waits for a good refresh.
+  const age = failure ? (
     <StaleNotice failure={failure} fetchedAt={fetchedAt} deletingBlocked={isAdmin} />
-  ) : null;
+  ) : (
+    <DataAge fetchedAt={fetchedAt} />
+  );
 
   if (!result.ok) {
     return (
@@ -102,7 +109,7 @@ export function CronTable({id, initial, isAdmin}: CronTableProps) {
     return (
       <div>
         {header}
-        {stale}
+        {age}
         {partial}
         {/* "No scheduled tasks" is a claim about the server, and it is only
             true when the panel actually answered. With a search running it is
@@ -120,7 +127,7 @@ export function CronTable({id, initial, isAdmin}: CronTableProps) {
   return (
     <div>
       {header}
-      {stale}
+      {age}
       {partial}
       <Table>
         <TableHeader>

@@ -6,5 +6,7 @@ export default async function DatabasesPage({params}: {params: Promise<{id: stri
   const user = await requireUser();
   const {id} = await params;
   const initial = await listDatabasesAction(id);
-  return <DatabasesTable id={id} initial={initial} isAdmin={user.role === 'admin'} />;
+  // When the rows were fetched, so the section can say how old they are (У-8).
+  const fetchedAt = new Date().toISOString();
+  return <DatabasesTable id={id} initial={initial} initialFetchedAt={fetchedAt} isAdmin={user.role === 'admin'} />;
 }

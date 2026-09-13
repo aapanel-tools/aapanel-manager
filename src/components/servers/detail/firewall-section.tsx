@@ -23,11 +23,14 @@ import {
 } from '@/components/ui/table';
 import {FailureNotice} from '@/components/failure-notice';
 import {StaleNotice} from '@/components/stale-notice';
+import {DataAge} from '@/components/data-age';
 
 export interface FirewallSectionProps {
   id: string;
   initialOverview: FirewallOverviewResult;
   initialRules: FirewallRulesResult;
+  /** When the page fetched both on the server (ISO), so what is shown carries its age (У-8). */
+  initialFetchedAt: string | null;
 }
 
 /**
@@ -43,17 +46,21 @@ export interface FirewallSectionProps {
  * different reasons and cost different amounts. Typing in the search box
  * re-reads the rules only; the refresh button re-reads both.
  */
-export function FirewallSection({id, initialOverview, initialRules}: FirewallSectionProps) {
+export function FirewallSection({id, initialOverview, initialRules, initialFetchedAt}: FirewallSectionProps) {
   const t = useTranslations('firewall');
   // The summary keeps what it showed when a refresh brings nothing, like the
   // rules below it (settle-refresh.ts).
-  const [overviewState, setOverviewState] = useState(() => settled(initialOverview));
+  const [overviewState, setOverviewState] = useState(() =>
+    settled(initialOverview, initialOverview.ok && initialFetchedAt ? new Date(initialFetchedAt) : null),
+  );
   const overview = overviewState.result;
   const [overviewPending, startOverview] = useTransition();
 
   const {result, failure, fetchedAt, search, setSearch, applied, pending, reload} =
-    useSearchableList<FirewallRulesResult>(initialRules, (term) =>
-      callAction(() => listFirewallRulesAction(id, term), asMessage),
+    useSearchableList<FirewallRulesResult>(
+      initialRules,
+      (term) => callAction(() => listFirewallRulesAction(id, term), asMessage),
+      initialFetchedAt,
     );
 
   function refreshAll() {
@@ -192,8 +199,9 @@ export function FirewallSection({id, initialOverview, initialRules}: FirewallSec
     );
   }
 
-  // Rules kept on screen after a refresh that brought nothing say how old they are.
-  const stale = failure ? <StaleNotice failure={failure} fetchedAt={fetchedAt} /> : null;
+  // How old the rules are: said always (У-8), and by the notice instead when a
+  // refresh failed (settle-refresh.ts).
+  const age = failure ? <StaleNotice failure={failure} fetchedAt={fetchedAt} /> : <DataAge fetchedAt={fetchedAt} />;
 
   // A rules list that came back short but looks whole is a false statement
   // about what is open on a client's machine (ADR-0003, Д-16).
@@ -209,7 +217,7 @@ export function FirewallSection({id, initialOverview, initialRules}: FirewallSec
     <div>
       {header}
       {summary}
-      {stale}
+      {age}
       {partial}
 
       {result.rules.length === 0 ? (

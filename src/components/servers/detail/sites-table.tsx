@@ -21,10 +21,13 @@ import {
 } from '@/components/ui/table';
 import {FailureNotice} from '@/components/failure-notice';
 import {StaleNotice} from '@/components/stale-notice';
+import {DataAge} from '@/components/data-age';
 
 export interface SitesTableProps {
   id: string;
   initial: SiteListResult;
+  /** When the page fetched `initial` on the server (ISO), so the rows carry their age (У-8). */
+  initialFetchedAt: string | null;
 }
 
 /**
@@ -36,13 +39,15 @@ export interface SitesTableProps {
  * the one named needs its own preview and confirmation, not a trash icon added
  * alongside a listing (PROJECT_RULES.md §16).
  */
-export function SitesTable({id, initial}: SitesTableProps) {
+export function SitesTable({id, initial, initialFetchedAt}: SitesTableProps) {
   const t = useTranslations('sites');
   // The term is passed to the panel, not applied to what came back: the site
   // being looked for may be one of the rows past the row limit (Д-16).
   const {result, failure, fetchedAt, search, setSearch, applied, pending, reload} =
-    useSearchableList<SiteListResult>(initial, (term) =>
-      callAction(() => listSitesAction(id, term), asMessage),
+    useSearchableList<SiteListResult>(
+      initial,
+      (term) => callAction(() => listSitesAction(id, term), asMessage),
+      initialFetchedAt,
     );
 
   const header = (
@@ -76,9 +81,13 @@ export function SitesTable({id, initial}: SitesTableProps) {
     />
   ) : null;
 
-  // Rows kept on screen after a refresh that brought nothing say how old they
-  // are (settle-refresh.ts). Nothing here deletes, so nothing is closed.
-  const stale = failure ? <StaleNotice failure={failure} fetchedAt={fetchedAt} /> : null;
+  // How old the rows are: said always (У-8), and by the notice instead when a
+  // refresh failed (settle-refresh.ts). Nothing here deletes, so nothing is closed.
+  const age = failure ? (
+    <StaleNotice failure={failure} fetchedAt={fetchedAt} />
+  ) : (
+    <DataAge fetchedAt={fetchedAt} />
+  );
 
   if (!result.ok) {
     return (
@@ -93,7 +102,7 @@ export function SitesTable({id, initial}: SitesTableProps) {
     return (
       <div>
         {header}
-        {stale}
+        {age}
         {partial}
         {/* "No sites" is a claim about the server, and it is only true when
             every source answered. With a failure standing, the same words are
@@ -113,7 +122,7 @@ export function SitesTable({id, initial}: SitesTableProps) {
   return (
     <div>
       {header}
-      {stale}
+      {age}
       {partial}
       <Table>
         <TableHeader>

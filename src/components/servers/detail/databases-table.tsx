@@ -24,23 +24,28 @@ import {DatabaseFormDialog} from '@/components/servers/detail/database-form-dial
 import {DatabaseDeleteDialog} from '@/components/servers/detail/database-delete-dialog';
 import {FailureNotice} from '@/components/failure-notice';
 import {StaleNotice} from '@/components/stale-notice';
+import {DataAge} from '@/components/data-age';
 
 export interface DatabasesTableProps {
   id: string;
   initial: DbListResult;
+  /** When the page fetched `initial` on the server (ISO), so the rows carry their age (У-8). */
+  initialFetchedAt: string | null;
   isAdmin: boolean;
 }
 
 type EngineFilter = 'all' | DbEngine;
 
-export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
+export function DatabasesTable({id, initial, initialFetchedAt, isAdmin}: DatabasesTableProps) {
   const t = useTranslations('databases');
   // Search goes to both engines through the action; the engine filter below
   // stays in the browser. They answer different questions: one narrows what
   // the panel looks through, the other hides half of what it returned.
   const {result, failure, fetchedAt, search, setSearch, applied, pending, reload} =
-    useSearchableList<DbListResult>(initial, (term) =>
-      callAction(() => listDatabasesAction(id, term), asMessage),
+    useSearchableList<DbListResult>(
+      initial,
+      (term) => callAction(() => listDatabasesAction(id, term), asMessage),
+      initialFetchedAt,
     );
   const [engineFilter, setEngineFilter] = useState<EngineFilter>('all');
 
@@ -99,11 +104,13 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
     />
   ) : null;
 
-  // Rows kept on screen after a refresh that brought nothing say how old they
-  // are; deleting from them waits for a good refresh (settle-refresh.ts).
-  const stale = failure ? (
+  // How old the rows are: said always (У-8), and by the notice instead when a
+  // refresh failed — deleting from such rows waits for a good refresh.
+  const age = failure ? (
     <StaleNotice failure={failure} fetchedAt={fetchedAt} deletingBlocked={isAdmin} />
-  ) : null;
+  ) : (
+    <DataAge fetchedAt={fetchedAt} />
+  );
 
   if (!result.ok) {
     return (
@@ -139,7 +146,7 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
     return (
       <div>
         {header}
-        {stale}
+        {age}
         {partial}
         {/* Same reasoning as the sites table: with an engine still owing an
             answer, "no databases" states as fact what the app does not know.
@@ -155,7 +162,7 @@ export function DatabasesTable({id, initial, isAdmin}: DatabasesTableProps) {
   return (
     <div>
       {header}
-      {stale}
+      {age}
       {partial}
       <Table>
         <TableHeader>

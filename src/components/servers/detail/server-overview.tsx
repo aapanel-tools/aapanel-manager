@@ -30,17 +30,22 @@ function fmt(value: number | null, decimals = 1): string {
 export interface ServerOverviewProps {
   id: string;
   initial: Awaited<ReturnType<typeof getServerMetricsAction>>;
+  /** When the page fetched `initial` on the server (ISO): the first "last updated" is that fetch (У-8). */
+  initialFetchedAt: string | null;
 }
 
-export function ServerOverview({id, initial}: ServerOverviewProps) {
+export function ServerOverview({id, initial, initialFetchedAt}: ServerOverviewProps) {
   const t = useTranslations('overview');
   const actionError = useActionError();
 
   // The newest readings with data, why the latest poll brought nothing, and when
   // the readings on screen arrived. A poll that fails no longer wipes them: at
   // one every four seconds, a brief drop in the connection used to blank the
-  // whole summary (settle-refresh.ts).
-  const [state, setState] = useState<Settled<MetricsResult>>(() => settled(initial));
+  // whole summary (settle-refresh.ts). The readings the page arrived with carry
+  // the time the server fetched them, rather than the moment the page mounted.
+  const [state, setState] = useState<Settled<MetricsResult>>(() =>
+    settled(initial, initial.ok && initialFetchedAt ? new Date(initialFetchedAt) : null),
+  );
 
   // Guard against overlapping fetches and post-unmount state updates.
   const inFlightRef = useRef(false);
@@ -48,14 +53,6 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
 
   useEffect(() => {
     mountedRef.current = true;
-    // Stamp the readings the page arrived with only after mount (client-only):
-    // a clock read during render differs between SSR and hydration. Only
-    // readings get a time — a refusal is not something that was "updated".
-    const stampTimer = setTimeout(() => {
-      if (!mountedRef.current) return;
-      const at = new Date();
-      setState((s) => (s.result.ok && s.fetchedAt === null ? {...s, fetchedAt: at} : s));
-    }, 0);
 
     const tick = async () => {
       // Skip when tab is hidden or a fetch is already running.
@@ -78,7 +75,6 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
 
     return () => {
       mountedRef.current = false;
-      clearTimeout(stampTimer);
       clearInterval(id_);
     };
   }, [id]);

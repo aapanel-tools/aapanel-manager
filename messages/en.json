@@ -405,6 +405,7 @@
     "dismiss": "Hide"
   },
   "stale": {
+    "asOf": "Data as of {when} UTC",
     "title": "Refresh failed — showing data from {when} UTC",
     "titleNoTime": "Refresh failed — showing the data loaded with the page",
     "deleteBlocked": "Deleting is unavailable until the list refreshes."

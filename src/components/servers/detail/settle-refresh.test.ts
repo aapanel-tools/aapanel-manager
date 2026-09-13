@@ -11,7 +11,7 @@ import {settled, settleRefresh} from './settle-refresh';
  * blank it replaced.
  */
 describe('every searchable list', () => {
-  it('renders StaleNotice', () => {
+  it('renders StaleNotice and DataAge', () => {
     const SRC = join(process.cwd(), 'src');
     const users: string[] = [];
     const walk = (dir: string) => {
@@ -21,7 +21,9 @@ describe('every searchable list', () => {
         else if (/\.tsx$/.test(entry.name) && !/\.test\.tsx$/.test(entry.name)) {
           const text = readFileSync(full, 'utf8');
           if (/\buseSearchableList\s*[<(]/.test(text)) users.push(relative(process.cwd(), full).split(sep).join('/'));
-          if (/\buseSearchableList\s*[<(]/.test(text) && !/<StaleNotice\b/.test(text)) {
+          // Both halves of saying how old the rows are: always (DataAge), and
+          // after a refresh that brought nothing (StaleNotice, У-8).
+          if (/\buseSearchableList\s*[<(]/.test(text) && !(/<StaleNotice\b/.test(text) && /<DataAge\b/.test(text))) {
             silent.push(relative(process.cwd(), full).split(sep).join('/'));
           }
         }

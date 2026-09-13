@@ -22,10 +22,13 @@ import {
 } from '@/components/ui/table';
 import {FailureNotice} from '@/components/failure-notice';
 import {StaleNotice} from '@/components/stale-notice';
+import {DataAge} from '@/components/data-age';
 
 export interface FtpTableProps {
   id: string;
   initial: FtpListResult;
+  /** When the page fetched `initial` on the server (ISO), so the rows carry their age (У-8). */
+  initialFetchedAt: string | null;
   isAdmin: boolean;
 }
 
@@ -38,11 +41,13 @@ export interface FtpTableProps {
  * needs to decide something: who exists, where they land, and whether the
  * account is switched on.
  */
-export function FtpTable({id, initial, isAdmin}: FtpTableProps) {
+export function FtpTable({id, initial, initialFetchedAt, isAdmin}: FtpTableProps) {
   const t = useTranslations('ftp');
   const {result, failure, fetchedAt, search, setSearch, applied, pending, reload} =
-    useSearchableList<FtpListResult>(initial, (term) =>
-      callAction(() => listFtpUsersAction(id, term), asMessage),
+    useSearchableList<FtpListResult>(
+      initial,
+      (term) => callAction(() => listFtpUsersAction(id, term), asMessage),
+      initialFetchedAt,
     );
 
   const header = (
@@ -84,11 +89,13 @@ export function FtpTable({id, initial, isAdmin}: FtpTableProps) {
     );
   }
 
-  // Rows kept on screen after a refresh that brought nothing say how old they
-  // are; deleting from them waits for a good refresh (settle-refresh.ts).
-  const stale = failure ? (
+  // How old the rows are: said always (У-8), and by the notice instead when a
+  // refresh failed — deleting from such rows waits for a good refresh.
+  const age = failure ? (
     <StaleNotice failure={failure} fetchedAt={fetchedAt} deletingBlocked={isAdmin} />
-  ) : null;
+  ) : (
+    <DataAge fetchedAt={fetchedAt} />
+  );
 
   // A short list of accounts that looks complete is how an operator concludes
   // an account was removed when the panel simply refused to answer (ADR-0003).
@@ -104,7 +111,7 @@ export function FtpTable({id, initial, isAdmin}: FtpTableProps) {
     return (
       <div>
         {header}
-        {stale}
+        {age}
         {partial}
         {result.failures.length === 0 && (
           <p className="text-sm text-muted-foreground">
@@ -118,7 +125,7 @@ export function FtpTable({id, initial, isAdmin}: FtpTableProps) {
   return (
     <div>
       {header}
-      {stale}
+      {age}
       {partial}
       <Table>
         <TableHeader>

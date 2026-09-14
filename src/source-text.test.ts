@@ -25,7 +25,7 @@ import {describe, it, expect} from 'vitest';
  * spelled out, so that this file cannot be damaged by the thing it looks for.
  */
 
-const ROOTS = ['src', 'messages', 'prisma', 'scripts'];
+const ROOTS = ['src', 'messages', 'prisma', 'scripts', 'e2e'];
 const EXTENSIONS = /\.(ts|tsx|js|mjs|cjs|json|css|prisma|sql)$/;
 
 /** Control, format, private-use, unassigned and surrogate code points. */

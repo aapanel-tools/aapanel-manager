@@ -209,10 +209,36 @@ ENABLE_POLLER=true
 
 ## E2E tests
 
-Playwright tests live in `e2e/`. They require a running dev server (the
-`playwright.config.ts` `webServer` block starts it automatically) and a
-reachable database with the seeded admin user.
+Playwright tests live in `e2e/`. `playwright.config.ts` starts two servers,
+or reuses them when they are already running:
+
+- a stand-in aaPanel on `127.0.0.1:8899` (`e2e/support/fake-panel.mjs`) — the
+  suite never talks to a real panel;
+- the app on `localhost:3000` via `pnpm dev`.
+
+They also need a reachable database with the seeded admin user
+(`prisma/seed.ts`; the tests read the same `SEED_ADMIN_EMAIL` /
+`SEED_ADMIN_PASSWORD` overrides). Each test adds the servers it needs, pointed
+at the stand-in panel, and removes them afterwards, pass or fail.
+
+Before the tests, `e2e/support/warm-up.ts` signs in once and opens every route
+the suite visits, so that `pnpm dev` compiles them outside the tests' timeouts.
+If the admin cannot sign in, the run stops there with one message.
+
+Start the dev server fresh for an e2e run: after hot reloads it has been seen to
+answer 500 and 404 for pages that work after a restart.
 
 ```bash
 pnpm test:e2e
 ```
+
+The two build-id tests (ADR-0011) need a production build started through the
+launcher; against `pnpm dev` they are skipped, and the report says why:
+
+```bash
+pnpm build
+node scripts/run-next.mjs start   # in another terminal — the suite reuses it
+pnpm test:e2e
+```
+
+E2E is not part of CI.

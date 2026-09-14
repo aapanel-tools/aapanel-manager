@@ -5,7 +5,7 @@ import {createClientForServer, presentError} from '@/lib/aapanel';
 import {serverLabel} from '@/lib/servers/label';
 import type {Database, SourceFailure, SourceTruncation} from '@/lib/aapanel';
 import {recordAudit, beginAudit, type AuditHandle} from '@/lib/audit';
-import {prisma} from '@/lib/db/prisma';
+import {loadServerCreds, ServerNotFoundError, type RegisteredServer} from '@/lib/servers/creds';
 import {log} from '@/log';
 import {databaseCreateSchema, databaseDeleteSchema} from '@/lib/validation/database';
 
@@ -23,17 +23,6 @@ export type DbListResult =
 export type DbMutResult =
   | {ok: true; message?: string}
   | {ok: false; error: string; fieldErrors?: Record<string, string[]>};
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-async function loadServerCreds(id: string) {
-  return prisma.server.findUniqueOrThrow({
-    where: {id},
-    select: {id: true, baseUrl: true, apiSkEnc: true, tlsMode: true, tlsPinSha256: true},
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -66,6 +55,7 @@ export async function listDatabasesAction(
     if (truncations.length > 0) log.warn({serverId, truncations}, 'listDatabasesAction truncated');
     return {ok: true, databases: items, failures, truncations};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId}, 'listDatabasesAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -102,6 +92,7 @@ export async function createDatabaseAction(serverId: string, formData: FormData)
     revalidatePath(`/servers/${serverId}/databases`);
     return {ok: true};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
     log.error({err, serverId, name}, 'createDatabaseAction failed');
     await recordAudit({userId, serverId, action: 'db.create', target: name, result: 'error'});
     return {ok: false, error: await presentError(err, await serverLabel(serverId))};
@@ -136,6 +127,17 @@ export async function deleteDatabaseAction(serverId: string, formData: FormData)
     return {ok: false, error: 'confirm'};
   }
 
+  // Looked up before the journal line, which references the server: for one
+  // that is gone the line cannot be written (creds.ts).
+  let creds: RegisteredServer;
+  try {
+    creds = await loadServerCreds(serverId);
+  } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
+    log.error({err, serverId, name, engine}, 'deleteDatabaseAction failed');
+    return {ok: false, error: await presentError(err, await serverLabel(serverId))};
+  }
+
   // Journalled before the panel is touched, not after. This destroys a
   // client's data on their own machine and cannot be undone, so the ordering
   // that has a hole in it — act, then write a line that may fail silently —
@@ -151,7 +153,6 @@ export async function deleteDatabaseAction(serverId: string, formData: FormData)
   }
 
   try {
-    const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
     await client.deleteDatabase(engine, {id, name});
     await audit.finish('ok');

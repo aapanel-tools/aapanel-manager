@@ -3,7 +3,7 @@ import {requireUser} from '@/lib/auth/guards';
 import {createClientForServer, presentError} from '@/lib/aapanel';
 import {serverLabel} from '@/lib/servers/label';
 import type {Site, SiteDetail, SourceFailure, SourceTruncation} from '@/lib/aapanel';
-import {prisma} from '@/lib/db/prisma';
+import {loadServerCreds, ServerNotFoundError} from '@/lib/servers/creds';
 import {log} from '@/log';
 
 // ---------------------------------------------------------------------------
@@ -23,17 +23,6 @@ export type SiteDetailResult =
   {ok: true; detail: SiteDetail} | {ok: false; message: string};
 
 export type SiteLogsResult = {ok: true; logs: string} | {ok: false; message: string};
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-async function loadServerCreds(id: string) {
-  return prisma.server.findUniqueOrThrow({
-    where: {id},
-    select: {id: true, baseUrl: true, apiSkEnc: true, tlsMode: true, tlsPinSha256: true},
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -71,6 +60,7 @@ export async function listSitesAction(
     if (truncations.length > 0) log.warn({serverId, truncations}, 'listSitesAction truncated');
     return {ok: true, sites: items, failures, truncations};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId}, 'listSitesAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -106,6 +96,7 @@ export async function getSiteDetailAction(
     }
     return {ok: true, detail};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId, siteId: site.id}, 'getSiteDetailAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -129,6 +120,7 @@ export async function getSiteLogsAction(
     const client = await createClientForServer(creds);
     return {ok: true, logs: await client.getSiteLogs(siteName)};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId}, 'getSiteLogsAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }

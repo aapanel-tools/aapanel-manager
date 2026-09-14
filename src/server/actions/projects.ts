@@ -13,7 +13,7 @@ import type {
   SourceTruncation,
 } from '@/lib/aapanel';
 import {recordAudit, beginAudit, type AuditHandle} from '@/lib/audit';
-import {prisma} from '@/lib/db/prisma';
+import {loadServerCreds, ServerNotFoundError, type RegisteredServer} from '@/lib/servers/creds';
 import {log} from '@/log';
 import {
   projectCreateSchema,
@@ -49,13 +49,6 @@ export type ListDirResult = {ok: true; path: string; dirs: string[]} | {ok: fals
 // Private helpers
 // ---------------------------------------------------------------------------
 
-async function loadServerCreds(id: string) {
-  return prisma.server.findUniqueOrThrow({
-    where: {id},
-    select: {id: true, baseUrl: true, apiSkEnc: true, tlsMode: true, tlsPinSha256: true},
-  });
-}
-
 /** Flattens a ZodError's issues into a field → messages map for the form. */
 function collectFieldErrors(issues: {path: PropertyKey[]; message: string}[]): Record<string, string[]> {
   const fieldErrors: Record<string, string[]> = {};
@@ -83,6 +76,7 @@ export async function getServerMetricsAction(serverId: string): Promise<MetricsR
     const metrics = await client.getMetrics();
     return {ok: true, metrics};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId}, 'getServerMetricsAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -109,6 +103,7 @@ export async function listNodeProjectsAction(
     if (truncations.length > 0) log.warn({serverId, truncations}, 'listNodeProjectsAction truncated');
     return {ok: true, projects: items, truncations};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId}, 'listNodeProjectsAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -154,6 +149,7 @@ export async function projectControlAction(
     revalidatePath(`/servers/${serverId}/projects`);
     return {ok: true, message: op};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId, projectName, op}, 'projectControlAction failed');
     await recordAudit({
       userId,
@@ -179,6 +175,7 @@ export async function getProjectLogsAction(serverId: string, projectName: string
     const logs = await client.getProjectLogs(projectName);
     return {ok: true, logs};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId, projectName}, 'getProjectLogsAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -216,6 +213,7 @@ export async function getProjectEditDataAction(
     const nodeVersions = versionsResult.status === 'fulfilled' ? versionsResult.value : [];
     return {ok: true, config, runScripts, nodeVersions};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId, projectName}, 'getProjectEditDataAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -234,6 +232,7 @@ export async function getProjectCreateEnvAction(serverId: string): Promise<Proje
     const preEnv = await client.getCreateEnv();
     return {ok: true, preEnv};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId}, 'getProjectCreateEnvAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -253,6 +252,7 @@ export async function getRunListAction(serverId: string, projectCwd: string): Pr
     const scripts = await client.getRunList(projectCwd.trim());
     return {ok: true, scripts};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId}, 'getRunListAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -282,6 +282,7 @@ export async function createProjectAction(serverId: string, formData: FormData):
     revalidatePath(`/servers/${serverId}/projects`);
     return {ok: true, message: 'created'};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
     log.error({err, serverId, name: input.name}, 'createProjectAction failed');
     await recordAudit({userId, serverId, action: 'project.create', target: input.name, result: 'error'});
     return {ok: false, error: await presentError(err, await serverLabel(serverId))};
@@ -312,6 +313,7 @@ export async function modifyProjectAction(serverId: string, formData: FormData):
     revalidatePath(`/servers/${serverId}/projects`);
     return {ok: true, message: 'modified'};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
     log.error({err, serverId, name: input.name}, 'modifyProjectAction failed');
     await recordAudit({userId, serverId, action: 'project.modify', target: input.name, result: 'error'});
     return {ok: false, error: await presentError(err, await serverLabel(serverId))};
@@ -340,6 +342,17 @@ export async function deleteProjectAction(serverId: string, formData: FormData):
   // Guard: user must type the project name to confirm deletion.
   if (confirm !== name) return {ok: false, error: 'confirm'};
 
+  // Looked up before the journal line, which references the server: for one
+  // that is gone the line cannot be written (creds.ts).
+  let creds: RegisteredServer;
+  try {
+    creds = await loadServerCreds(serverId);
+  } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
+    log.error({err, serverId, name}, 'deleteProjectAction failed');
+    return {ok: false, error: await presentError(err, await serverLabel(serverId))};
+  }
+
   // Journalled before the panel is touched — the same reasoning as db.delete:
   // this runs on someone else's production machine and cannot be undone, so
   // it may not happen unless the record already exists (Д-19).
@@ -352,7 +365,6 @@ export async function deleteProjectAction(serverId: string, formData: FormData):
   }
 
   try {
-    const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
     await client.deleteProject(name);
     await audit.finish('ok');
@@ -383,6 +395,7 @@ export async function listDirAction(serverId: string, path: string): Promise<Lis
     const res = await client.listDir(target);
     return {ok: true, path: res.path, dirs: res.dirs};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId, path: target}, 'listDirAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }

@@ -5,7 +5,7 @@ import {serverLabel} from '@/lib/servers/label';
 import type {FileContent, FileEntry, SourceTruncation} from '@/lib/aapanel';
 import {beginAudit, type AuditHandle} from '@/lib/audit';
 import {normalizeBrowsePath} from '@/lib/files/paths';
-import {prisma} from '@/lib/db/prisma';
+import {loadServerCreds, ServerNotFoundError, type RegisteredServer} from '@/lib/servers/creds';
 import {log} from '@/log';
 
 // ---------------------------------------------------------------------------
@@ -18,17 +18,6 @@ export type DirectoryResult =
   | {ok: false; message: string};
 
 export type FileReadResult = {ok: true; file: FileContent} | {ok: false; message: string};
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-async function loadServerCreds(id: string) {
-  return prisma.server.findUniqueOrThrow({
-    where: {id},
-    select: {id: true, baseUrl: true, apiSkEnc: true, tlsMode: true, tlsPinSha256: true},
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -71,6 +60,7 @@ export async function listDirectoryAction(
     }
     return {ok: true, path: target, entries: listing.items, truncations: listing.truncations};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId, path: target}, 'listDirectoryAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -100,6 +90,17 @@ export async function readFileAction(serverId: string, path: unknown): Promise<F
   // not a request anything on screen can make.
   if (!target || target === '/') return {ok: false, message: 'validation'};
 
+  // Looked up before the journal line, which references the server: for one
+  // that is gone the line cannot be written (creds.ts).
+  let creds: RegisteredServer;
+  try {
+    creds = await loadServerCreds(serverId);
+  } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
+    log.error({err, serverId, path: target}, 'readFileAction failed');
+    return {ok: false, message: await presentError(err, await serverLabel(serverId))};
+  }
+
   let audit: AuditHandle;
   try {
     audit = await beginAudit({userId, serverId, action: 'file.read', target});
@@ -109,7 +110,6 @@ export async function readFileAction(serverId: string, path: unknown): Promise<F
   }
 
   try {
-    const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
     const file = await client.readFile(target);
     // A binary or over-sized file is still a finished read: the attempt is on

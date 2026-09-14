@@ -6,7 +6,7 @@ import {createClientForServer, presentError} from '@/lib/aapanel';
 import {serverLabel} from '@/lib/servers/label';
 import type {CronTask, SourceFailure, SourceTruncation} from '@/lib/aapanel';
 import {recordAudit, beginAudit, type AuditHandle} from '@/lib/audit';
-import {prisma} from '@/lib/db/prisma';
+import {loadServerCreds, ServerNotFoundError, type RegisteredServer} from '@/lib/servers/creds';
 import {log} from '@/log';
 import {
   cronRunSchema,
@@ -34,17 +34,6 @@ export type CronMutResult =
   /** `message` carries what actually happened, which is not always what was asked. */
   | {ok: true; message?: string}
   | {ok: false; error: string; fieldErrors?: Record<string, string[]>};
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-async function loadServerCreds(id: string) {
-  return prisma.server.findUniqueOrThrow({
-    where: {id},
-    select: {id: true, baseUrl: true, apiSkEnc: true, tlsMode: true, tlsPinSha256: true},
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -83,6 +72,7 @@ export async function listCronTasksAction(
     if (failures.length > 0) log.warn({serverId, failures}, 'listCronTasksAction partial result');
     return {ok: true, tasks: items, failures, truncations};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId}, 'listCronTasksAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -112,6 +102,7 @@ export async function getCronLogsAction(
     const client = await createClientForServer(creds);
     return {ok: true, logs: await client.getCronLogs(taskId)};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId, taskId}, 'getCronLogsAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -170,6 +161,17 @@ export async function runCronTaskAction(
   const {id, name} = parsed.data;
   const target = cronConfirmPhrase({id, name});
 
+  // Looked up before the journal line, which references the server: for one
+  // that is gone the line cannot be written (creds.ts).
+  let creds: RegisteredServer;
+  try {
+    creds = await loadServerCreds(serverId);
+  } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
+    log.error({err, serverId, taskId: id}, 'runCronTaskAction failed');
+    return {ok: false, error: await presentError(err, await serverLabel(serverId))};
+  }
+
   let audit: AuditHandle;
   try {
     audit = await beginAudit({userId, serverId, action: 'cron.run', target});
@@ -182,7 +184,6 @@ export async function runCronTaskAction(
   }
 
   try {
-    const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
     await client.runCronTask(id);
     await audit.finish('ok');
@@ -235,6 +236,7 @@ export async function setCronTaskEnabledAction(
     revalidatePath(`/servers/${serverId}/cron`);
     return {ok: true, message: outcome};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
     log.error({err, serverId, taskId: id, enabled}, 'setCronTaskEnabledAction failed');
     await recordAudit({userId, serverId, action, target, result: 'error'});
     return {ok: false, error: await presentError(err, await serverLabel(serverId))};
@@ -269,6 +271,17 @@ export async function deleteCronTaskAction(
   const phrase = cronConfirmPhrase({id, name});
   if (confirm !== phrase) return {ok: false, error: 'confirm'};
 
+  // Looked up before the journal line, which references the server: for one
+  // that is gone the line cannot be written (creds.ts).
+  let creds: RegisteredServer;
+  try {
+    creds = await loadServerCreds(serverId);
+  } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
+    log.error({err, serverId, taskId: id}, 'deleteCronTaskAction failed');
+    return {ok: false, error: await presentError(err, await serverLabel(serverId))};
+  }
+
   let audit: AuditHandle;
   try {
     audit = await beginAudit({userId, serverId, action: 'cron.delete', target: phrase});
@@ -278,7 +291,6 @@ export async function deleteCronTaskAction(
   }
 
   try {
-    const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
     await client.deleteCronTask(id);
     await audit.finish('ok');

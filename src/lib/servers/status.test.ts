@@ -8,6 +8,7 @@ vi.mock('@/lib/aapanel', async (orig) => {
 import {prisma} from '@/lib/db/prisma';
 import {createClientForServer} from '@/lib/aapanel';
 import {refreshServerStatus} from './status';
+import {ServerNotFoundError} from './creds';
 
 const ids: string[] = [];
 beforeEach(() => {process.env.APP_ENCRYPTION_KEY = 'a'.repeat(64); vi.restoreAllMocks?.();});
@@ -38,5 +39,12 @@ describe('refreshServerStatus', () => {
     const st = await prisma.serverStatus.findUniqueOrThrow({where: {serverId: s.id}});
     expect(st.online).toBe(false);
     expect(st.error).toContain('down');
+  });
+
+  it('says a server that is gone is gone, and caches nothing for it (Д-34)', async () => {
+    vi.mocked(createClientForServer).mockClear();
+    await expect(refreshServerStatus('st-no-such-server')).rejects.toBeInstanceOf(ServerNotFoundError);
+    expect(await prisma.serverStatus.findUnique({where: {serverId: 'st-no-such-server'}})).toBeNull();
+    expect(createClientForServer).not.toHaveBeenCalled();
   });
 });

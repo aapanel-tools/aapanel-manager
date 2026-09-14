@@ -24,6 +24,7 @@ import {
   testConnectionSchema,
 } from '@/lib/validation/server';
 import {refreshServerStatus} from '@/lib/servers/status';
+import {loadServerCreds, ServerNotFoundError} from '@/lib/servers/creds';
 
 export type ActionState =
   | {ok: true; message?: string}
@@ -107,10 +108,7 @@ export async function updateServerAction(_prev: ActionState, formData: FormData)
     // switch away from pinning invalidates the stored pin: it identified the
     // previous panel, and keeping it would either block a legitimate server or
     // silently vouch for a different one.
-    const before = await prisma.server.findUniqueOrThrow({
-      where: {id},
-      select: {baseUrl: true, tlsPinSha256: true},
-    });
+    const before = await loadServerCreds(id);
     if (tlsPinSha256) data.tlsPinSha256 = tlsPinSha256;
     else if (tlsMode === 'VERIFY' || before.baseUrl !== baseUrl) data.tlsPinSha256 = null;
     await prisma.server.update({where: {id}, data});
@@ -129,6 +127,7 @@ export async function updateServerAction(_prev: ActionState, formData: FormData)
     revalidatePath('/servers');
     return {ok: true, message: 'updated'};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return fieldErrorState('notFound');
     log.error({err, id}, 'updateServerAction failed');
     await recordAudit({userId: user.id, serverId: id, action: 'server.update', target: name, result: 'error'});
     return fieldErrorState(await presentError(err, await serverLabel(id)));
@@ -216,8 +215,7 @@ export async function testConnectionAction(formData: FormData): Promise<Connecti
     if (apiSk) {
       apiSkEnc = encryptSecret(apiSk, getEncryptionKey());
     } else if (id) {
-      const existing = await prisma.server.findUniqueOrThrow({where: {id}, select: {apiSkEnc: true}});
-      apiSkEnc = existing.apiSkEnc;
+      apiSkEnc = (await loadServerCreds(id)).apiSkEnc;
     } else {
       return {ok: false, message: 'api_sk required'};
     }
@@ -238,6 +236,7 @@ export async function testConnectionAction(formData: FormData): Promise<Connecti
       fingerprint: fingerprint ? formatFingerprint(fingerprint) : null,
     };
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     return {ok: false, message: await presentError(err)};
   }
 }
@@ -297,6 +296,12 @@ export async function refreshServerStatusAction(serverId: string): Promise<Simpl
     revalidatePath('/servers');
     return {ok: r.ok, message: r.ok ? 'refreshed' : (r.message ?? 'error')};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) {
+      // Nothing to journal against a registration that is gone, and nothing went
+      // wrong: the table re-renders without its row.
+      revalidatePath('/servers');
+      return {ok: false, message: 'notFound'};
+    }
     await recordAudit({userId: user.id, serverId, action: 'server.refresh', result: 'error'});
     revalidatePath('/servers');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};

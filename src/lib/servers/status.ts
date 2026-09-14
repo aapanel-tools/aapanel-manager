@@ -1,5 +1,6 @@
 import 'server-only';
 import {prisma} from '@/lib/db/prisma';
+import {loadServerCreds} from '@/lib/servers/creds';
 import {createClientForServer, describeError} from '@/lib/aapanel';
 import {notifyServerChanged} from '@/lib/realtime/notify';
 import {log} from '@/log';
@@ -12,12 +13,9 @@ export interface RefreshResult {
 
 /** Polls one server live, writes the result to the cache, notifies listeners.
  *  Shared by manual refresh (Server Actions) and the background worker. Never throws
- *  for poll failures — returns {ok:false}. (A missing server id still throws via findUniqueOrThrow.) */
+ *  for poll failures — returns {ok:false}. A missing server throws ServerNotFoundError (creds.ts). */
 export async function refreshServerStatus(serverId: string): Promise<RefreshResult> {
-  const server = await prisma.server.findUniqueOrThrow({
-    where: {id: serverId},
-    select: {id: true, baseUrl: true, apiSkEnc: true, tlsMode: true, tlsPinSha256: true},
-  });
+  const server = await loadServerCreds(serverId);
   const now = new Date();
   try {
     const snap = await (await createClientForServer(server)).collectStatus();

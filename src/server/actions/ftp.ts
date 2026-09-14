@@ -6,7 +6,7 @@ import {createClientForServer, presentError} from '@/lib/aapanel';
 import {serverLabel} from '@/lib/servers/label';
 import type {FtpUser, SourceFailure, SourceTruncation} from '@/lib/aapanel';
 import {recordAudit, beginAudit, type AuditHandle} from '@/lib/audit';
-import {prisma} from '@/lib/db/prisma';
+import {loadServerCreds, ServerNotFoundError, type RegisteredServer} from '@/lib/servers/creds';
 import {log} from '@/log';
 import {
   ftpCreateSchema,
@@ -30,13 +30,6 @@ export type FtpMutResult =
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
-async function loadServerCreds(id: string) {
-  return prisma.server.findUniqueOrThrow({
-    where: {id},
-    select: {id: true, baseUrl: true, apiSkEnc: true, tlsMode: true, tlsPinSha256: true},
-  });
-}
 
 /** Turns zod issues into the per-field shape the dialogs already understand. */
 function fieldErrorsOf(error: z.ZodError): Record<string, string[]> {
@@ -81,6 +74,7 @@ export async function listFtpUsersAction(
     if (truncations.length > 0) log.warn({serverId, truncations}, 'listFtpUsersAction truncated');
     return {ok: true, users: items, failures, truncations};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
     log.error({err, serverId}, 'listFtpUsersAction failed');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};
   }
@@ -118,6 +112,7 @@ export async function createFtpUserAction(
     revalidatePath(`/servers/${serverId}/ftp`);
     return {ok: true};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
     // The account name and its directory are logged; the password is not, and
     // that is why `parsed.data` is never handed to the logger whole.
     log.error({err, serverId, username, path, note}, 'createFtpUserAction failed');
@@ -156,6 +151,7 @@ export async function setFtpUserPasswordAction(
     revalidatePath(`/servers/${serverId}/ftp`);
     return {ok: true};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
     log.error({err, serverId, ftpUser: username}, 'setFtpUserPasswordAction failed');
     await recordAudit({userId, serverId, action: 'ftp.password', target: username, result: 'error'});
     return {ok: false, error: await presentError(err, await serverLabel(serverId))};
@@ -194,6 +190,7 @@ export async function setFtpUserEnabledAction(
     revalidatePath(`/servers/${serverId}/ftp`);
     return {ok: true};
   } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
     log.error({err, serverId, ftpUser: username, enabled}, 'setFtpUserEnabledAction failed');
     await recordAudit({userId, serverId, action, target: username, result: 'error'});
     return {ok: false, error: await presentError(err, await serverLabel(serverId))};
@@ -224,6 +221,17 @@ export async function deleteFtpUserAction(
   const {id, username, confirm} = parsed.data;
   if (confirm !== username) return {ok: false, error: 'confirm'};
 
+  // Looked up before the journal line, which references the server: for one
+  // that is gone the line cannot be written (creds.ts).
+  let creds: RegisteredServer;
+  try {
+    creds = await loadServerCreds(serverId);
+  } catch (err) {
+    if (err instanceof ServerNotFoundError) return {ok: false, error: 'notFound'};
+    log.error({err, serverId, ftpUser: username}, 'deleteFtpUserAction failed');
+    return {ok: false, error: await presentError(err, await serverLabel(serverId))};
+  }
+
   let audit: AuditHandle;
   try {
     audit = await beginAudit({userId, serverId, action: 'ftp.delete', target: username});
@@ -233,7 +241,6 @@ export async function deleteFtpUserAction(
   }
 
   try {
-    const creds = await loadServerCreds(serverId);
     const client = await createClientForServer(creds);
     await client.deleteFtpUser(id, username);
     await audit.finish('ok');

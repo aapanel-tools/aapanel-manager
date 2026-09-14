@@ -1,7 +1,7 @@
 import 'server-only';
 import type {AaPanelClient} from '@/lib/aapanel';
 import {createClientForServer} from '@/lib/aapanel';
-import {prisma} from '@/lib/db/prisma';
+import {loadServerCreds} from '@/lib/servers/creds';
 import {parseEnv} from '@/env';
 import {errInfo} from '@/lib/safe-error';
 import {log} from '@/log';
@@ -25,13 +25,13 @@ let stopped = true;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let inFlight: Promise<void> = Promise.resolve();
 
-/** Builds a panel client for one server, decrypting its key server-side. */
+/**
+ * Builds a panel client for one server, decrypting its key server-side. A server
+ * removed since the job was queued fails its step with a plain sentence
+ * (ServerNotFoundError) rather than the database's message on the operations page.
+ */
 async function clientForServer(serverId: string): Promise<AaPanelClient> {
-  const server = await prisma.server.findUniqueOrThrow({
-    where: {id: serverId},
-    select: {id: true, baseUrl: true, apiSkEnc: true, tlsMode: true, tlsPinSha256: true},
-  });
-  return createClientForServer(server);
+  return createClientForServer(await loadServerCreds(serverId));
 }
 
 async function drain(): Promise<void> {

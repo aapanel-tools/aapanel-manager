@@ -2,7 +2,9 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {AaPanelClient} from './client';
 import {AaPanelError, type NodeProject, type Database} from './types';
 import {resetGates} from './rate-limit';
+import {mysqlDatabaseListResponse} from './schemas';
 import {FILE_VIEW_MAX_BYTES, FILE_VIEW_MAX_RESPONSE_BYTES} from '@/lib/files/viewing';
+import {log} from '@/log';
 
 // ---------------------------------------------------------------------------
 // Mock undici so tests never touch the network.
@@ -2576,5 +2578,74 @@ describe('list search reaches the panel', () => {
     await new AaPanelClient(cfg).listSites({search: '  site\nadmin logged in  '});
 
     expect(bodyOf(0).get('search')).toBe('site admin logged in');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Failures after the answer began, and failures of the app's own (Д-35)
+// ---------------------------------------------------------------------------
+
+describe('AaPanelClient answer that breaks off', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  /** Headers arrive, a first chunk of the body too, and then the body fails with `reason`. */
+  function brokenBody(reason: unknown): Response {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"status":0,'));
+        controller.error(reason);
+      },
+    });
+    return new Response(stream, {status: 200, headers: {'content-type': 'application/json'}});
+  }
+
+  it('reports a connection dropped halfway through the answer as the panel being unreachable', async () => {
+    // Only the request used to be classified; this reached the operator as a
+    // failure of unknown kind.
+    const dropped = Object.assign(new TypeError('terminated'), {cause: {code: 'UND_ERR_SOCKET'}});
+    fetchMock.mockResolvedValueOnce(brokenBody(dropped) as never);
+    await expect(new AaPanelClient(cfg).listProjects()).rejects.toMatchObject({
+      kind: 'network',
+      message: 'terminated (UND_ERR_SOCKET)',
+    });
+  });
+
+  it('reports the clock running out halfway through the answer as a panel that did not answer in time', async () => {
+    const timedOut = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    fetchMock.mockResolvedValueOnce(brokenBody(timedOut) as never);
+    await expect(new AaPanelClient(cfg).listProjects()).rejects.toMatchObject({kind: 'timeout'});
+  });
+
+  it('still refuses an oversized answer as the panel’s, not as a broken connection', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: Array.from({length: 50}, (_, i) => ({name: `p${i}`}))}}) as never,
+    );
+    await expect(new AaPanelClient({...cfg, maxResponseBytes: 64}).listProjects()).rejects.toMatchObject({
+      kind: 'panel_error',
+      message: expect.stringContaining('exceeded'),
+    });
+  });
+});
+
+describe('AaPanelClient source that fails inside the app', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('names the failure as the app’s, keeps its text off the list, and writes it to the log', async () => {
+    // The list travels to the browser; the exception's text does not belong there,
+    // and without the log line it would be gone altogether.
+    const logged = vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    vi.spyOn(mysqlDatabaseListResponse, 'safeParse').mockImplementationOnce(() => {
+      throw new TypeError('Cannot read properties of undefined (reading map) at /app/chunks/1.js');
+    });
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+
+    const {failures} = await new AaPanelClient(cfg).listDatabases();
+
+    expect(failures).toEqual([{source: 'mysql', kind: 'unknown', message: ''}]);
+    expect(logged).toHaveBeenCalledTimes(1);
+    expect(logged.mock.calls[0]?.[0]).toMatchObject({source: 'mysql'});
   });
 });

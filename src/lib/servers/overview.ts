@@ -1,6 +1,8 @@
 import 'server-only';
 import {prisma} from '@/lib/db/prisma';
 import {parseEnv} from '@/env';
+import {asFailureKind} from '@/lib/aapanel/failure-phrase';
+import type {FailureKind} from '@/lib/aapanel/types';
 
 /**
  * Read model for the fleet summary (Ф-7).
@@ -29,7 +31,13 @@ export interface AttentionRow {
   value: number | null;
   /** Last successful or attempted poll; null when never polled. */
   lastCheckedAt: Date | null;
-  /** The panel's own words for the failure, when there are any. */
+  /**
+   * What the last poll failed with, for the summary to put into its reader's
+   * words (ADR-0012). Null when it did not fail — or failed before the kind was
+   * stored, in which case there is nothing trustworthy to word.
+   */
+  errorKind: FailureKind | null;
+  /** The panel's own words for that failure, when it gave any. Never the app's own text. */
   error: string | null;
 }
 
@@ -55,6 +63,23 @@ export interface FleetOverview {
  * enough that a poller which died is noticed within minutes rather than hours.
  */
 const STALE_INTERVALS = 3;
+
+/**
+ * The last poll's failure, as the summary may show it (ADR-0012).
+ *
+ * A row written before the kind was stored holds describeError()'s English
+ * sentence in `error`. That is not the panel's words, so it is not shown; the next
+ * poll rewrites the row within one interval. A kind this build does not know
+ * reads as the app's own failure, and the app's own failure has no words to show.
+ */
+function shownFailure(st: {errorKind: string | null; error: string | null}): {
+  errorKind: FailureKind | null;
+  error: string | null;
+} {
+  if (st.errorKind === null) return {errorKind: null, error: null};
+  const errorKind = asFailureKind(st.errorKind);
+  return {errorKind, error: errorKind === 'unknown' ? null : st.error};
+}
 
 /** Worst first: a server that is down costs more than one that is merely full. */
 const REASON_RANK: Record<AttentionReason, number> = {offline: 0, stale: 1, disk: 2, memory: 3};
@@ -86,7 +111,9 @@ export async function getFleetOverview(now: Date = new Date()): Promise<FleetOve
         id: true,
         name: true,
         tag: true,
-        status: {select: {online: true, mem: true, disk: true, error: true, lastCheckedAt: true}},
+        status: {
+          select: {online: true, mem: true, disk: true, error: true, errorKind: true, lastCheckedAt: true},
+        },
       },
     }),
   ]);
@@ -98,7 +125,7 @@ export async function getFleetOverview(now: Date = new Date()): Promise<FleetOve
     // "we have not looked yet" is not a problem with the server.
     if (!st) continue;
 
-    const base = {id: s.id, name: s.name, tag: s.tag, lastCheckedAt: st.lastCheckedAt, error: st.error};
+    const base = {id: s.id, name: s.name, tag: s.tag, lastCheckedAt: st.lastCheckedAt, ...shownFailure(st)};
     if (!st.online) {
       attention.push({...base, reason: 'offline', value: null});
     } else if (st.lastCheckedAt < staleBefore) {

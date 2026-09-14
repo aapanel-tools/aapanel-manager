@@ -6,6 +6,13 @@ export type AaPanelErrorKind =
   /** The panel presented a certificate other than the pinned one (ADR-0002). */
   | 'tls_pin_mismatch';
 
+/**
+ * A failure as the interface names it: one of the panel's kinds above, or
+ * `unknown` — a failure of the app itself, whose own text is never shown to an
+ * operator (Д-35). It goes to the application log instead.
+ */
+export type FailureKind = AaPanelErrorKind | 'unknown';
+
 export type ProjectOperation = 'start' | 'stop' | 'restart';
 
 export interface NodeProject {
@@ -108,10 +115,14 @@ export class AaPanelError extends Error {
  *
  * `source` names the thing that failed the way the domain names it — an engine
  * ('mysql', 'pgsql'), later a server or a site subtype — not an internal id.
+ *
+ * `message` is the panel's own words, and empty for an `unknown` failure: this
+ * object travels to the browser, and the text of the app's own exception has no
+ * business there (Д-35).
  */
 export interface SourceFailure {
   source: string;
-  kind: AaPanelErrorKind;
+  kind: FailureKind;
   message: string;
 }
 
@@ -152,7 +163,6 @@ export interface PartialResult<T> {
   truncations: SourceTruncation[];
 }
 
-/** Normalizes anything thrown by a source into a failure the interface can show. */
 /**
  * What each failure kind means, in words an operator can act on. The raw enum
  * name is not it: `tls_pin_mismatch` tells a developer what happened and tells
@@ -193,13 +203,17 @@ export function describeError(err: unknown, serverName?: string): string {
   return `${prefix}Unknown error`;
 }
 
+/**
+ * Normalizes anything thrown by a source into a failure the interface can show.
+ *
+ * Anything that is not an AaPanelError is the app's own failure — a mapping bug,
+ * say — and is named so. It used to be filed under `panel_error` with its raw
+ * text, which blamed the panel for our fault and sent that text to the browser
+ * (Д-35). The caller logs the error itself; see `sourceFailed` in client.ts.
+ */
 export function describeSourceFailure(source: string, err: unknown): SourceFailure {
   if (err instanceof AaPanelError) return {source, kind: err.kind, message: err.message};
-  return {
-    source,
-    kind: 'panel_error',
-    message: err instanceof Error ? err.message : 'Unknown error',
-  };
+  return {source, kind: 'unknown', message: ''};
 }
 
 export interface AaPanelClientConfig {

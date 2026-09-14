@@ -237,6 +237,9 @@ export async function testConnectionAction(formData: FormData): Promise<Connecti
     };
   } catch (err) {
     if (err instanceof ServerNotFoundError) return {ok: false, message: 'notFound'};
+    // The operator is shown a phrase, or a code for a failure of the app's own;
+    // the text that tells which one it was lives only here (Д-35).
+    log.warn({err}, 'testConnectionAction failed');
     return {ok: false, message: await presentError(err)};
   }
 }
@@ -263,6 +266,10 @@ export async function inspectCertificateAction(formData: FormData): Promise<Cert
   if (!parsed.success) return {ok: false, message: 'validation'};
 
   const {baseUrl} = parsed.data;
+  // Plain http has no certificate to look at. Refused here, as a mistake in the
+  // form, rather than by the probe: its refusal is not a panel failure, so it
+  // would reach the operator as "details are in the log" (Д-35).
+  if (new URL(baseUrl).protocol !== 'https:') return {ok: false, message: 'validation'};
   try {
     const cert = await probeCertificate(baseUrl);
     return {
@@ -294,7 +301,11 @@ export async function refreshServerStatusAction(serverId: string): Promise<Simpl
     const r = await refreshServerStatus(serverId);
     await recordAudit({userId: user.id, serverId, action: 'server.refresh', result: r.ok ? 'ok' : 'error'});
     revalidatePath('/servers');
-    return {ok: r.ok, message: r.ok ? 'refreshed' : (r.message ?? 'error')};
+    if (r.ok) return {ok: true, message: 'refreshed'};
+    // The poll has logged its technical sentence already (status.ts). What goes
+    // back is the failure in the reader's own words — it used to be that English
+    // sentence, shown as it was in the middle of a Russian interface.
+    return {ok: false, message: await presentError(r.error, await serverLabel(serverId))};
   } catch (err) {
     if (err instanceof ServerNotFoundError) {
       // Nothing to journal against a registration that is gone, and nothing went
@@ -302,6 +313,7 @@ export async function refreshServerStatusAction(serverId: string): Promise<Simpl
       revalidatePath('/servers');
       return {ok: false, message: 'notFound'};
     }
+    log.error({err, serverId}, 'refreshServerStatusAction failed');
     await recordAudit({userId: user.id, serverId, action: 'server.refresh', result: 'error'});
     revalidatePath('/servers');
     return {ok: false, message: await presentError(err, await serverLabel(serverId))};

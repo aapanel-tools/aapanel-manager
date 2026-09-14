@@ -77,6 +77,7 @@ vi.mock('next/cache', () => ({revalidatePath: vi.fn()}));
 
 import {prisma} from '@/lib/db/prisma';
 import {createClientForServer} from '@/lib/aapanel';
+import {AaPanelError} from '@/lib/aapanel/types';
 import {
   getServerMetricsAction,
   listNodeProjectsAction,
@@ -169,13 +170,13 @@ describe('getServerMetricsAction', () => {
     }
   });
 
-  it('returns ok:false when getMetrics throws', async () => {
+  it('returns ok:false with the panel’s words when getMetrics fails at the panel', async () => {
     const mockCreateClient = vi.mocked(createClientForServer);
     mockCreateClient.mockImplementationOnce(
       () =>
         ({
           getMetrics: async () => {
-            throw new Error('panel down');
+            throw new AaPanelError('network', 'panel down');
           },
           listProjects: async () => ({items: [], failures: [], truncations: []}),
           batchOperation: async () => ({}),
@@ -185,6 +186,15 @@ describe('getServerMetricsAction', () => {
     const res = await getServerMetricsAction(serverId);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.message).toContain('panel down');
+  });
+
+  it('returns the `failed` code, not the exception’s text, when the app itself fails (Д-35)', async () => {
+    // A code, so the server card says "could not load" instead of blaming the
+    // server — and Prisma's text with the build's paths stays in the log.
+    vi.mocked(createClientForServer).mockImplementationOnce(() => {
+      throw new Error('Invalid `prisma.server.findUnique()` invocation in D:\\app\\chunks\\1.js');
+    });
+    expect(await getServerMetricsAction(serverId)).toEqual({ok: false, message: 'failed'});
   });
 });
 

@@ -51,11 +51,14 @@ describe('describeSourceFailure', () => {
     });
   });
 
-  it('files anything that is not an AaPanelError under panel_error', () => {
-    expect(describeSourceFailure('pgsql', new Error('boom'))).toEqual({
+  it('names anything that is not an AaPanelError as the app’s own failure, with no text (Д-35)', () => {
+    // It used to go under panel_error with its raw message: blaming the panel for
+    // our fault, and sending the exception's text to the browser with the list.
+    expect(describeSourceFailure('pgsql', new Error('boom at D:\\app\\chunks\\1.js'))).toEqual({
       source: 'pgsql',
-      kind: 'panel_error',
-      message: 'boom',
+      kind: 'unknown',
+      message: '',
     });
+    expect(describeSourceFailure('ftp', 'thrown string')).toEqual({source: 'ftp', kind: 'unknown', message: ''});
   });
 });

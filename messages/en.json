@@ -376,7 +376,7 @@
     "auth": "panel rejected the API key",
     "panel_error": "panel refused the request",
     "tls_pin_mismatch": "panel presented a different TLS certificate",
-    "unknown": "unknown error",
+    "unknown": "the app itself failed — details are in the application log",
     "withDetail": "{message} — {detail}",
     "withServer": "{server}: {message}"
   },
@@ -388,6 +388,7 @@
     "invalid": "The app asked for something it does not support — reload the page",
     "failed": "The action did not go through; details are in the application log",
     "notFound": "Not found — it may have been deleted already",
+    "auditUnavailable": "Not done: the operations journal is unavailable, and an irreversible action is never taken unrecorded",
     "outdated": "The app has been updated — reload the page to continue",
     "unreachable": "Cannot reach the app — check the connection and try again"
   },

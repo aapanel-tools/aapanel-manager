@@ -31,7 +31,11 @@ const longAgo = new Date(Date.now() - 10 * 60_000);
 beforeAll(async () => {
   before = (await getFleetOverview()).counts;
   await server('healthy', {online: true, cpu: 4, mem: 20, disk: 30, lastCheckedAt: new Date()});
-  await server('down', {online: false, error: 'panel unreachable', lastCheckedAt: new Date()});
+  await server('down', {online: false, errorKind: 'panel_error', error: 'IP validation failed', lastCheckedAt: new Date()});
+  // Written before the kind was stored: `error` holds describeError()'s English sentence.
+  await server('olddown', {online: false, error: 'panel unreachable — fetch failed (ECONNREFUSED)', lastCheckedAt: new Date()});
+  // A kind this build does not know, as a newer build before a rollback may leave.
+  await server('oddkind', {online: false, errorKind: 'solar_flare', error: 'whatever it said', lastCheckedAt: new Date()});
   await server('fulldisk', {online: true, mem: 20, disk: 93, lastCheckedAt: new Date()});
   await server('tightmem', {online: true, mem: 95, disk: 10, lastCheckedAt: new Date()});
   await server('stale', {online: true, mem: 10, disk: 10, lastCheckedAt: longAgo});
@@ -50,9 +54,9 @@ const find = (rows: {name: string}[], key: string) => rows.find((r) => r.name ==
 describe('getFleetOverview counts', () => {
   it('counts online, offline and never-polled servers separately', async () => {
     const {counts} = await getFleetOverview();
-    expect(counts.total - before.total).toBe(6);
+    expect(counts.total - before.total).toBe(8);
     expect(counts.online - before.online).toBe(4); // healthy, fulldisk, tightmem, stale
-    expect(counts.offline - before.offline).toBe(1); // down
+    expect(counts.offline - before.offline).toBe(3); // down, olddown, oddkind
     // "never looked" is not the same as "looked and found down": a fleet where
     // every server is unchecked is a broken poller, not an outage.
     expect(counts.unchecked - before.unchecked).toBe(1);
@@ -72,10 +76,26 @@ describe('getFleetOverview attention list', () => {
     expect(find(attention, 'never')).toBeUndefined();
   });
 
-  it('reports an offline server with the panel wording it failed with', async () => {
+  it('reports an offline server with the kind and the panel wording it failed with', async () => {
     const {attention} = await getFleetOverview();
     const row = find(attention, 'down');
-    expect(row).toMatchObject({reason: 'offline', value: null, error: 'panel unreachable'});
+    expect(row).toMatchObject({
+      reason: 'offline',
+      value: null,
+      errorKind: 'panel_error',
+      error: 'IP validation failed',
+    });
+  });
+
+  it('does not pass off a sentence stored before the kind as the panel’s words (ADR-0012)', async () => {
+    // Still listed as offline; the next poll gives it a kind and real words.
+    const {attention} = await getFleetOverview();
+    expect(find(attention, 'olddown')).toMatchObject({reason: 'offline', errorKind: null, error: null});
+  });
+
+  it('reads a kind it does not know as the app’s own failure, with no words to show', async () => {
+    const {attention} = await getFleetOverview();
+    expect(find(attention, 'oddkind')).toMatchObject({reason: 'offline', errorKind: 'unknown', error: null});
   });
 
   it('reports a full disk with its percentage', async () => {

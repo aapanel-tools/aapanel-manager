@@ -56,7 +56,10 @@ model ServerStatus {
   mem           Float?
   disk          Float?
   projectCount  Int?
+  /// The panel's own words for the last failed poll; null for a failure of the app itself (ADR-0012).
   error         String?
+  /// Kind of the last failed poll: a panel failure kind or "unknown". A string, not an enum (ADR-0012).
+  errorKind     String?
   lastCheckedAt DateTime @default(now())
 }
 

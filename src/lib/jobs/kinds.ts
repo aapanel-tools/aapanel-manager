@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import type {AaPanelClient} from '@/lib/aapanel';
+import {AaPanelError} from '@/lib/aapanel/types';
 
 /**
  * The kinds of work a bulk job can do (ADR-0005).
@@ -70,9 +71,11 @@ const projectControl = defineKind<ProjectControlParams>({
     const result = await client.batchOperation([project], operation);
     const outcome = result.msg_list[0];
     // The panel answers 200 with a per-project verdict inside; a false status is
-    // a failure even though the request itself succeeded.
+    // a failure even though the request itself succeeded. Thrown as the panel's
+    // refusal, not a bare Error: the queue shows a panel's words on the operations
+    // page and keeps the app's own failures to the log (Д-35).
     if (outcome && outcome.status === false) {
-      throw new Error(outcome.msg || `Panel refused to ${operation} ${project}`);
+      throw new AaPanelError('panel_error', outcome.msg || `Panel refused to ${operation} ${project}`);
     }
     return outcome?.msg || `${operation} ok`;
   },

@@ -7,6 +7,7 @@ vi.mock('@/lib/aapanel', async (orig) => {
 
 import {prisma} from '@/lib/db/prisma';
 import {createClientForServer} from '@/lib/aapanel';
+import {AaPanelError} from '@/lib/aapanel/types';
 import {refreshServerStatus} from './status';
 import {ServerNotFoundError} from './creds';
 
@@ -29,16 +30,40 @@ describe('refreshServerStatus', () => {
     expect(st).toMatchObject({online: true, cpu: 11, mem: 22, disk: 33, error: null});
   });
 
-  it('writes offline + error when the client throws', async () => {
+  it('keeps the kind of a panel failure and the panel’s own words, not a sentence of ours (ADR-0012)', async () => {
     const s = await prisma.server.create({data: {name: `st2-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
     ids.push(s.id);
-    vi.mocked(createClientForServer).mockReturnValue({collectStatus: vi.fn(async () => {throw new Error('down');})} as never);
+    const refusal = new AaPanelError('panel_error', 'IP validation failed');
+    vi.mocked(createClientForServer).mockReturnValue({collectStatus: vi.fn(async () => {throw refusal;})} as never);
+    const res = await refreshServerStatus(s.id);
+    expect(res).toMatchObject({ok: false, online: false});
+    // Handed back as thrown, for an action to word in its reader's language.
+    expect(res.error).toBe(refusal);
+    const st = await prisma.serverStatus.findUniqueOrThrow({where: {serverId: s.id}});
+    // The summary builds the phrase from the kind; describeError()'s English
+    // sentence used to be stored here and shown as it was.
+    expect(st).toMatchObject({online: false, errorKind: 'panel_error', error: 'IP validation failed'});
+  });
+
+  it('stores a failure of the app’s own as such, with none of its text (Д-35)', async () => {
+    const s = await prisma.server.create({data: {name: `st3-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
+    ids.push(s.id);
+    vi.mocked(createClientForServer).mockRejectedValue(new Error('Unsupported state or unable to authenticate data') as never);
     const res = await refreshServerStatus(s.id);
     expect(res.ok).toBe(false);
-    expect(res.online).toBe(false);
     const st = await prisma.serverStatus.findUniqueOrThrow({where: {serverId: s.id}});
-    expect(st.online).toBe(false);
-    expect(st.error).toContain('down');
+    expect(st).toMatchObject({online: false, errorKind: 'unknown', error: null});
+  });
+
+  it('clears the stored failure once a poll succeeds', async () => {
+    const s = await prisma.server.create({data: {name: `st4-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
+    ids.push(s.id);
+    vi.mocked(createClientForServer).mockReturnValue({collectStatus: vi.fn(async () => {throw new AaPanelError('timeout', 'took too long');})} as never);
+    await refreshServerStatus(s.id);
+    vi.mocked(createClientForServer).mockReturnValue({collectStatus: vi.fn(async () => ({online: true, cpu: 1, mem: 2, disk: 3}))} as never);
+    await refreshServerStatus(s.id);
+    const st = await prisma.serverStatus.findUniqueOrThrow({where: {serverId: s.id}});
+    expect(st).toMatchObject({online: true, errorKind: null, error: null});
   });
 
   it('says a server that is gone is gone, and caches nothing for it (Д-34)', async () => {

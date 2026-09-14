@@ -2,6 +2,7 @@
 
 import {useTranslations} from 'next-intl';
 import type {SourceFailure, SourceTruncation} from '@/lib/aapanel';
+import {failurePhrase, withPanelWords, type PhraseTranslator} from '@/lib/aapanel/failure-phrase';
 
 /**
  * Why a source did not answer, in the operator's language.
@@ -9,36 +10,12 @@ import type {SourceFailure, SourceTruncation} from '@/lib/aapanel';
  * The banner used to print the raw exception — "sites: fetch failed
  * (ECONNREFUSED)" — which is the technical truth and nearly useless to the
  * person reading it. The failure already carries its kind, so the frame can be
- * said properly and the raw text kept beside it as detail, exactly as
- * presentError() does on the server (Д-21).
- *
- * Literal keys rather than tp(f.kind): messages.test.ts skips dynamic keys, and
- * a template literal here would put these five strings back outside the gate.
+ * said properly and the panel's words kept beside it as detail, exactly as
+ * presentError() does on the server (Д-21). A failure of the app's own arrives
+ * with no words at all (Д-35) and is shown as the phrase alone.
  */
-function failureReason(
-  failure: SourceFailure,
-  tp: (key: string, values?: Record<string, string>) => string,
-): string {
-  const phrase = (() => {
-    switch (failure.kind) {
-      case 'network':
-        return tp('network');
-      case 'timeout':
-        return tp('timeout');
-      case 'auth':
-        return tp('auth');
-      case 'panel_error':
-        return tp('panel_error');
-      case 'tls_pin_mismatch':
-        return tp('tls_pin_mismatch');
-      default:
-        return tp('unknown');
-    }
-  })();
-  // Dropped when it only repeats the phrase, so nobody is shown one sentence twice.
-  return failure.message && failure.message !== phrase
-    ? tp('withDetail', {message: phrase, detail: failure.message})
-    : phrase;
+function failureReason(failure: SourceFailure, tp: PhraseTranslator): string {
+  return withPanelWords(failurePhrase(failure.kind, tp), failure.message, tp);
 }
 
 export interface ListIntegrityNoticeProps {

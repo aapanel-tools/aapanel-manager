@@ -43,6 +43,8 @@ vi.mock('next-intl/server', () => ({
 }));
 
 import {getTranslations} from 'next-intl/server';
+import {AuditUnavailableError} from '@/lib/audit';
+import {ServerNotFoundError} from '@/lib/servers/creds';
 import {presentError} from './present';
 import {AaPanelError} from './types';
 
@@ -82,20 +84,43 @@ describe('presentError', () => {
     await expect(presentError(err)).resolves.toBe('panel unreachable');
   });
 
-  it('handles a failure that is not a panel failure at all', async () => {
-    // Everything the app does can also break for ordinary reasons, and the
-    // exception's message is then the only thing separating one crash from
-    // another — so it is kept, framed as an unknown kind.
+  it('answers a failure of the app’s own with a code, never with its text (Д-35)', async () => {
+    // For a database failure the text is Prisma's, with the query and the paths
+    // of the build on the server's disk. The caller has logged it; the operator
+    // gets `failed`, which the browser words as "details are in the log" — and
+    // which the server card does not mistake for the panel refusing.
     locale.current = 'ru';
-    await expect(presentError(new Error('socket hang up'), 'srv')).resolves.toBe(
-      'srv: неизвестная ошибка — socket hang up',
-    );
+    const prismaText =
+      'Invalid `prisma.server.findUnique()` invocation in D:\\app\\.next\\server\\chunks\\1.js: connection refused';
+    const shown = await presentError(new Error(prismaText), 'srv');
+    expect(shown).toBe('failed');
+    expect(shown).not.toContain('prisma');
   });
 
   it('never leaves a person with nothing, whatever was thrown', async () => {
     locale.current = 'ru';
-    await expect(presentError('boom')).resolves.toBe('неизвестная ошибка');
-    await expect(presentError(undefined)).resolves.toBe('неизвестная ошибка');
+    await expect(presentError('boom')).resolves.toBe('failed');
+    await expect(presentError(undefined)).resolves.toBe('failed');
+    await expect(presentError(null, 'srv')).resolves.toBe('failed');
+  });
+
+  it('says why an irreversible action was refused when the journal is down (Д-19)', async () => {
+    // Its message is an English sentence about the mechanism; the operator is
+    // owed the outcome in their own language, which the code carries.
+    await expect(presentError(new AuditUnavailableError('db.delete'))).resolves.toBe('auditUnavailable');
+  });
+
+  it('treats a server that is gone as not found, not as a failure (Д-34)', async () => {
+    await expect(presentError(new ServerNotFoundError('gone'), 'srv')).resolves.toBe('notFound');
+  });
+
+  it('does not wait for a translator to refuse the app’s own failure', async () => {
+    // The code needs no locale, so the fallback that keeps English sentences for
+    // a context without a request cannot put the app's text back on the screen.
+    const failing = vi.mocked(getTranslations);
+    failing.mockRejectedValueOnce(new Error('`getTranslations` is not supported here'));
+    await expect(presentError(new Error('secret-box: bad decrypt'))).resolves.toBe('failed');
+    failing.mockReset();
   });
 
   it('falls back to the technical sentence when there is no request to translate for', async () => {

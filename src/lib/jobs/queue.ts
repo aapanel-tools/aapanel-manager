@@ -1,7 +1,10 @@
 import 'server-only';
 import type {AaPanelClient} from '@/lib/aapanel';
+import {AaPanelError} from '@/lib/aapanel/types';
 import {recordAudit} from '@/lib/audit';
 import {prisma} from '@/lib/db/prisma';
+import {errInfo} from '@/lib/safe-error';
+import {ServerNotFoundError} from '@/lib/servers/creds';
 import {mapLimit} from '@/lib/utils/concurrency';
 import {jobKind} from './kinds';
 import {log} from '@/log';
@@ -128,6 +131,28 @@ async function cancelRequested(jobId: string): Promise<boolean> {
   return Boolean(row?.cancelRequestedAt);
 }
 
+/** A step the queue refuses for a reason it can say in a sentence of its own. */
+class StepRefused extends Error {}
+
+/** What a failed step says on the operations page when the failure is the app's own. */
+export const APP_STEP_FAILURE = 'The app failed on this step; details are in the application log';
+
+/**
+ * What a failed step says on the operations page.
+ *
+ * The panel's words, the plain sentence of a server that is gone, or the queue's
+ * own refusal. Anything else is the app's own failure — the database, a key that
+ * no longer decrypts — and its text stays in the application log (Д-35): the page
+ * is read by every operator, and Prisma's message carries the query and the
+ * paths of the build on the server's disk.
+ */
+function stepFailure(err: unknown): {message: string; ours: boolean} {
+  if (err instanceof AaPanelError || err instanceof ServerNotFoundError || err instanceof StepRefused) {
+    return {message: err.message, ours: false};
+  }
+  return {message: APP_STEP_FAILURE, ours: true};
+}
+
 async function runClaimedJob(jobId: string, deps: JobRunnerDeps): Promise<void> {
   const job = await prisma.job.findUniqueOrThrow({
     where: {id: jobId},
@@ -156,7 +181,7 @@ async function runClaimedJob(jobId: string, deps: JobRunnerDeps): Promise<void> 
       data: {status: 'running', startedAt: new Date()},
     });
     try {
-      if (!item.serverId) throw new Error('Server was removed before this step ran');
+      if (!item.serverId) throw new StepRefused('Server was removed before this step ran');
       const client = await deps.clientFor(item.serverId);
       const message = await kind.runOn({client, serverName: item.serverName}, job.params);
       await prisma.jobItem.update({
@@ -165,7 +190,13 @@ async function runClaimedJob(jobId: string, deps: JobRunnerDeps): Promise<void> 
       });
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const {message, ours} = stepFailure(err);
+      if (ours) {
+        log.error(
+          {jobId, itemId: item.id, serverId: item.serverId, err: errInfo(err)},
+          'jobs: a step failed inside the app',
+        );
+      }
       await prisma.jobItem.update({
         where: {id: item.id},
         data: {status: 'failed', message: message.slice(0, 500), finishedAt: new Date()},

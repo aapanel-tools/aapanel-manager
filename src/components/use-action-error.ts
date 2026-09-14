@@ -28,6 +28,11 @@ export type ActionErrorCode =
   /** The thing being acted on is not there any more. */
   | 'notFound'
   /**
+   * An irreversible action was refused before it started, because its journal
+   * line could not be written — and such an action is never taken unrecorded (Д-19).
+   */
+  | 'auditUnavailable'
+  /**
    * The call never reached an action: the server runs a build without it.
    * Not returned by any action — `callAction` makes it from the exception (ADR-0010).
    */
@@ -43,6 +48,7 @@ const CODES: ReadonlySet<string> = new Set<ActionErrorCode>([
   'invalid',
   'failed',
   'notFound',
+  'auditUnavailable',
   'outdated',
   'unreachable',
 ]);
@@ -126,6 +132,8 @@ export function useActionError(): (raw: string, fallback?: string) => string {
           return t('failed');
         case 'notFound':
           return t('notFound');
+        case 'auditUnavailable':
+          return t('auditUnavailable');
         case 'outdated':
           return t('outdated');
         case 'unreachable':

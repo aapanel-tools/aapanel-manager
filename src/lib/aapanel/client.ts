@@ -30,6 +30,7 @@ import {
 import {TlsPinMismatchError, dispatcherFor, formatFingerprint} from './tls';
 import {DEFAULT_PAGE_LIMIT, describePage, normalizeSearch} from './paging';
 import {FILE_VIEW_MAX_BYTES, FILE_VIEW_MAX_RESPONSE_BYTES, looksBinary} from '@/lib/files/viewing';
+import {log} from '@/log';
 import {
   DEFAULT_MAX_CONCURRENT,
   PanelBusyError,
@@ -184,6 +185,50 @@ function isAbortLike(err: unknown): boolean {
   return names.some((n) => n === 'TimeoutError' || n === 'AbortError');
 }
 
+/**
+ * A failure of the connection itself, in the panel error's terms.
+ *
+ * One place for both moments a connection can fail: while the request goes out,
+ * and while the answer's body comes in. Only the first used to be classified, so a
+ * panel that dropped the connection halfway through its answer — or ran out the
+ * clock there — reached the operator as a failure of unknown kind (Д-35).
+ */
+function transportError(err: unknown, path: string, timeoutMs: number): AaPanelError {
+  // Already a panel failure: the byte cap refusing an answer, for one.
+  if (err instanceof AaPanelError) return err;
+  const mismatch = asPinMismatch(err);
+  if (mismatch) {
+    return new AaPanelError(
+      'tls_pin_mismatch',
+      `Panel certificate changed: expected ${formatFingerprint(mismatch.expected)}, ` +
+        `got ${formatFingerprint(mismatch.actual)}`,
+    );
+  }
+  // AbortSignal.timeout() aborts with a DOMException named TimeoutError, NOT
+  // AbortError — an AbortError only appears when a caller aborts the signal
+  // itself. Some fetch/undici versions rethrow a wrapper and expose the abort
+  // reason as `cause`, so both positions are checked. Missing this misreports
+  // "panel did not answer in time" as a generic network failure.
+  if (isAbortLike(err)) {
+    return new AaPanelError('timeout', `Request to ${path} timed out after ${timeoutMs}ms`);
+  }
+  const causeCode = (err as {cause?: {code?: string}} | null)?.cause?.code;
+  const message = err instanceof Error ? err.message : 'Network error';
+  return new AaPanelError('network', `${message}${causeCode ? ` (${causeCode})` : ''}`);
+}
+
+/**
+ * One source's failure, for the list that is missing it.
+ *
+ * A failure of the app's own reaches the list with no words (describeSourceFailure),
+ * so its text is written to the application log here, or it would be lost.
+ */
+function sourceFailed(source: string, err: unknown): SourceFailure {
+  const failure = describeSourceFailure(source, err);
+  if (failure.kind === 'unknown') log.error({err, source}, 'a panel source failed inside the app');
+  return failure;
+}
+
 export class AaPanelClient {
   private readonly baseUrl: string;
   private readonly apiSk: string;
@@ -283,25 +328,7 @@ export class AaPanelClient {
       if (this.dispatcher) init.dispatcher = this.dispatcher;
       res = (await undiciFetch(url, init)) as unknown as Response;
     } catch (err) {
-      const mismatch = asPinMismatch(err);
-      if (mismatch) {
-        throw new AaPanelError(
-          'tls_pin_mismatch',
-          `Panel certificate changed: expected ${formatFingerprint(mismatch.expected)}, ` +
-            `got ${formatFingerprint(mismatch.actual)}`,
-        );
-      }
-      // AbortSignal.timeout() aborts with a DOMException named TimeoutError, NOT
-      // AbortError — an AbortError only appears when a caller aborts the signal
-      // itself. Some fetch/undici versions rethrow a wrapper and expose the abort
-      // reason as `cause`, so both positions are checked. Missing this misreports
-      // "panel did not answer in time" as a generic network failure.
-      if (isAbortLike(err)) {
-        throw new AaPanelError('timeout', `Request to ${path} timed out after ${this.timeoutMs}ms`);
-      }
-      const causeCode = (err as {cause?: {code?: string}}).cause?.code;
-      const message = err instanceof Error ? err.message : 'Network error';
-      throw new AaPanelError('network', `${message}${causeCode ? ` (${causeCode})` : ''}`);
+      throw transportError(err, path, this.timeoutMs);
     }
 
     if (res.status === 401 || res.status === 403) {
@@ -310,7 +337,14 @@ export class AaPanelClient {
     if (!res.ok) {
       throw new AaPanelError('panel_error', `Panel returned HTTP ${res.status}`, res.status);
     }
-    const text = await readCapped(res, maxBytes, path);
+    let text: string;
+    try {
+      text = await readCapped(res, maxBytes, path);
+    } catch (err) {
+      // The headers arrived, the body did not: the connection can fail — or the
+      // clock run out — here just as well as before the answer began.
+      throw transportError(err, path, this.timeoutMs);
+    }
     let payload: unknown;
     try {
       payload = JSON.parse(text);
@@ -884,7 +918,7 @@ export class AaPanelClient {
           const cut = describePage('mysql', items.length, limit, msg.page);
           return {items, failures: [], truncations: cut ? [cut] : []};
         } catch (err) {
-          return {items: [], failures: [describeSourceFailure('mysql', err)], truncations: []};
+          return {items: [], failures: [sourceFailed('mysql', err)], truncations: []};
         }
       })(),
       (async (): Promise<PartialResult<Database>> => {
@@ -905,7 +939,7 @@ export class AaPanelClient {
           const cut = describePage('pgsql', items.length, limit, msg.page);
           return {items, failures: [], truncations: cut ? [cut] : []};
         } catch (err) {
-          return {items: [], failures: [describeSourceFailure('pgsql', err)], truncations: []};
+          return {items: [], failures: [sourceFailed('pgsql', err)], truncations: []};
         }
       })(),
     ]);
@@ -973,7 +1007,7 @@ export class AaPanelClient {
       const cut = describePage('sites', items.length, limit, msg.page);
       return {items, failures: [], truncations: cut ? [cut] : []};
     } catch (err) {
-      return {items: [], failures: [describeSourceFailure('sites', err)], truncations: []};
+      return {items: [], failures: [sourceFailed('sites', err)], truncations: []};
     }
   }
 
@@ -1013,7 +1047,7 @@ export class AaPanelClient {
             addtime: d.addtime,
           }));
         } catch (err) {
-          failures.push(describeSourceFailure('domains', err));
+          failures.push(sourceFailed('domains', err));
           return null;
         }
       })(),
@@ -1034,7 +1068,7 @@ export class AaPanelClient {
             passwordProtected: msg.pass?.result ?? false,
           };
         } catch (err) {
-          failures.push(describeSourceFailure('directory', err));
+          failures.push(sourceFailed('directory', err));
           return null;
         }
       })(),
@@ -1060,7 +1094,7 @@ export class AaPanelClient {
             certificate: msg.cert_data ?? null,
           };
         } catch (err) {
-          failures.push(describeSourceFailure('ssl', err));
+          failures.push(sourceFailed('ssl', err));
           return null;
         }
       })(),
@@ -1075,7 +1109,7 @@ export class AaPanelClient {
           const msg = this.unwrapEnvelope<typeof raw.message>(raw);
           return dottedPhpVersion(msg.phpversion);
         } catch (err) {
-          failures.push(describeSourceFailure('php', err));
+          failures.push(sourceFailed('php', err));
           return null;
         }
       })(),
@@ -1168,7 +1202,7 @@ export class AaPanelClient {
       });
       return {items, failures: [], truncations: []};
     } catch (err) {
-      return {items: [], failures: [describeSourceFailure('cron', err)], truncations: []};
+      return {items: [], failures: [sourceFailed('cron', err)], truncations: []};
     }
   }
 
@@ -1299,7 +1333,7 @@ export class AaPanelClient {
           const msg = this.unwrapEnvelope<typeof raw.message>(raw);
           return {enabled: msg.status};
         } catch (err) {
-          failures.push(describeSourceFailure('firewallStatus', err));
+          failures.push(sourceFailed('firewallStatus', err));
           return null;
         }
       })(),
@@ -1323,7 +1357,7 @@ export class AaPanelClient {
             updatedAt: msg.update_time,
           };
         } catch (err) {
-          failures.push(describeSourceFailure('firewallInfo', err));
+          failures.push(sourceFailed('firewallInfo', err));
           return null;
         }
       })(),
@@ -1384,7 +1418,7 @@ export class AaPanelClient {
       const cut = describePage('firewall', items.length, row, msg.page);
       return {items, failures: [], truncations: cut ? [cut] : []};
     } catch (err) {
-      return {items: [], failures: [describeSourceFailure('firewall', err)], truncations: []};
+      return {items: [], failures: [sourceFailed('firewall', err)], truncations: []};
     }
   }
 
@@ -1427,7 +1461,7 @@ export class AaPanelClient {
       const cut = describePage('ftp', items.length, limit, msg.page);
       return {items, failures: [], truncations: cut ? [cut] : []};
     } catch (err) {
-      return {items: [], failures: [describeSourceFailure('ftp', err)], truncations: []};
+      return {items: [], failures: [sourceFailed('ftp', err)], truncations: []};
     }
   }
 

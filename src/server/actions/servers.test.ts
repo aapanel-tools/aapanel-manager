@@ -66,6 +66,7 @@ vi.mock('@/env', async (orig) => {
 
 import {prisma} from '@/lib/db/prisma';
 import {createClientForServer} from '@/lib/aapanel';
+import {AaPanelError} from '@/lib/aapanel/types';
 import {decryptSecret} from '@/lib/crypto/secret-box';
 import {
   createServerAction,
@@ -142,6 +143,37 @@ describe('refreshServerStatusAction', () => {
     expect(st.online).toBe(true);
     expect(st.cpu).toBe(7);
   });
+
+  it('tells a panel failure with the panel’s words, and the app’s own failure as a code (Д-35)', async () => {
+    const s = await prisma.server.create({data: {name: `RefFail-${uniq()}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
+    cleanupServerIds.push(s.id);
+
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          collectStatus: async () => {
+            throw new AaPanelError('auth', 'invalid api_sk');
+          },
+        }) as never,
+    );
+    const refused = await refreshServerStatusAction(s.id);
+    expect(refused.ok).toBe(false);
+    // A unit test has no request to translate for, so presentError falls back to
+    // the technical sentence. What matters here is that it is the panel's failure,
+    // words included — it used to be the stored English sentence as it was.
+    expect(refused.message).toContain('invalid api_sk');
+    expect(refused.message).toContain(s.name);
+
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          collectStatus: async () => {
+            throw new Error('Invalid `prisma.serverStatus.upsert()` invocation in D:\\app\\chunks\\1.js');
+          },
+        }) as never,
+    );
+    expect(await refreshServerStatusAction(s.id)).toEqual({ok: false, message: 'failed'});
+  });
 });
 
 describe('refreshVisibleStatusesAction', () => {
@@ -215,8 +247,8 @@ describe('deleteServerAction', () => {
       expect(res.ok).toBe(false);
       // And the operator is told why nothing happened, rather than being
       // handed a database constraint message about a table they never asked
-      // about.
-      if (!res.ok) expect(res.message).toMatch(/journal/i);
+      // about — as a code the browser words in their language (Д-35).
+      if (!res.ok) expect(res.message).toBe('auditUnavailable');
     } finally {
       guard.user.id = realUser;
     }
@@ -253,10 +285,21 @@ describe('inspectCertificateAction', () => {
     expect(panel.probeCertificate).not.toHaveBeenCalled();
   });
 
-  it('reports an unreachable panel instead of throwing', async () => {
-    panel.probeCertificate.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
+  it('refuses plain http as a form mistake, without opening a connection (Д-35)', async () => {
+    // There is no certificate on plain http. The probe's refusal of it is not a
+    // panel failure, so left to the probe it would reach the operator as
+    // "details are in the log".
+    panel.probeCertificate.mockClear();
+    const res = await inspectCertificateAction(fd({baseUrl: 'http://1.2.3.4:8888'}));
+    expect(res).toMatchObject({ok: false, message: 'validation'});
+    expect(panel.probeCertificate).not.toHaveBeenCalled();
+  });
+
+  it('reports an unreachable panel instead of throwing, in the socket’s words', async () => {
+    panel.probeCertificate.mockRejectedValueOnce(new AaPanelError('network', 'connect ECONNREFUSED'));
     const res = await inspectCertificateAction(fd({baseUrl: 'https://1.2.3.4:8888'}));
     expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toContain('ECONNREFUSED');
   });
 });
 

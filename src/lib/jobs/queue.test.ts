@@ -1,7 +1,10 @@
 import {describe, it, expect, beforeAll, beforeEach, afterAll, vi} from 'vitest';
 import type {AaPanelClient} from '@/lib/aapanel';
+import {AaPanelError} from '@/lib/aapanel/types';
 import {prisma} from '@/lib/db/prisma';
+import {log} from '@/log';
 import {
+  APP_STEP_FAILURE,
   JobRejected,
   createJob,
   reapInterruptedJobs,
@@ -149,7 +152,7 @@ describe('runNextJob', () => {
 
     const failing = {
       clientFor: async (): Promise<AaPanelClient> => {
-        throw new Error('panel unreachable');
+        throw new AaPanelError('network', 'panel unreachable');
       },
       concurrency: 2,
     };
@@ -201,6 +204,31 @@ describe('runNextJob', () => {
     expect(job.status).toBe('failed');
     expect(job.items[0]!.status).toBe('failed');
     expect(job.items[0]!.message).toBe('project not found');
+  });
+
+  it('keeps the text of the app’s own failure off the operations page, and in the log (Д-35)', async () => {
+    const id = await newJob({stopOnError: false});
+    const logged = vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const prismaText =
+      'Invalid `prisma.server.findUnique()` invocation in D:\\app\\.next\\server\\chunks\\1.js';
+    const deps = {
+      clientFor: async (): Promise<AaPanelClient> => {
+        throw new Error(prismaText);
+      },
+      concurrency: 2,
+    };
+
+    try {
+      expect(await runNextJob(deps)).toBe(true);
+      const job = await readJob(id);
+      expect(job.items.map((i) => i.message)).toEqual([APP_STEP_FAILURE, APP_STEP_FAILURE, APP_STEP_FAILURE]);
+      // One line per step that failed, carrying what the page no longer shows.
+      const stepLines = logged.mock.calls.filter((call) => call[1] === 'jobs: a step failed inside the app');
+      expect(stepLines).toHaveLength(3);
+      expect(stepLines[0]?.[0]).toMatchObject({jobId: id, err: {message: prismaText}});
+    } finally {
+      logged.mockRestore();
+    }
   });
 
   it('stops at the next server when cancellation is asked for', async () => {

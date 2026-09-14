@@ -1,6 +1,7 @@
 import {isIP} from 'node:net';
 import {connect as tlsConnect, type PeerCertificate, type TLSSocket} from 'node:tls';
 import {Agent, buildConnector} from 'undici';
+import {AaPanelError} from './types';
 
 /**
  * How a panel's TLS certificate is trusted. Mirrors the Prisma `TlsMode` enum.
@@ -66,6 +67,10 @@ function describe(cert: PeerCertificate): CertificateInfo {
  * Verification is off on purpose: the point is to LOOK at the certificate so that
  * a human — or trust-on-first-use — can decide about it. Nothing is sent over this
  * connection, and it is closed immediately; api_sk never touches it.
+ *
+ * Fails with AaPanelError. A probe that cannot reach the panel is the panel being
+ * unreachable, and an operator who mistyped an address has to be told that, not
+ * sent to the application log, which is where the app's own failures go (Д-35).
  */
 export function probeCertificate(baseUrl: string, timeoutMs = 10_000): Promise<CertificateInfo> {
   const url = new URL(baseUrl);
@@ -84,7 +89,7 @@ export function probeCertificate(baseUrl: string, timeoutMs = 10_000): Promise<C
         const cert = socket.getPeerCertificate();
         socket.destroy();
         if (!cert?.fingerprint256) {
-          reject(new Error(`${url.host} presented no TLS certificate`));
+          reject(new AaPanelError('panel_error', `${url.host} presented no TLS certificate`));
           return;
         }
         resolve(describe(cert));
@@ -92,11 +97,13 @@ export function probeCertificate(baseUrl: string, timeoutMs = 10_000): Promise<C
     );
     socket.setTimeout(timeoutMs, () => {
       socket.destroy();
-      reject(new Error(`TLS probe of ${url.host} timed out after ${timeoutMs}ms`));
+      reject(new AaPanelError('timeout', `TLS probe of ${url.host} timed out after ${timeoutMs}ms`));
     });
     socket.once('error', (err) => {
       socket.destroy();
-      reject(err);
+      // Refused, reset, name not found, a handshake the peer broke off: all of it
+      // is "cannot reach this panel", and the socket's own text says which.
+      reject(new AaPanelError('network', err.message));
     });
   });
 }

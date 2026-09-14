@@ -157,6 +157,16 @@ test.describe('a tab and the build that rendered it (ADR-0011)', () => {
     return typeof id === 'string' && id.length > 0 ? id : null;
   }
 
+  /**
+   * Locally a server without a build id skips these tests, with the reason. In
+   * CI it fails them: CI builds through run-next.mjs, so a missing id there is
+   * the very defect they are for, and a skip would pass it green.
+   */
+  function requireBuild(id: string | null): void {
+    if (process.env.CI) expect(id, NO_BUILD_ID).toBeTruthy();
+    else test.skip(!id, NO_BUILD_ID);
+  }
+
   const outdatedNotice = (page: Page) => page.getByRole('alert').filter({hasText: 'Приложение обновлено'});
 
   // The watch listens only once React has hydrated the page; a focus before
@@ -164,7 +174,7 @@ test.describe('a tab and the build that rendered it (ADR-0011)', () => {
   const comeBack = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event('focus')));
 
   test('coming back to a tab of the running build says nothing', async ({page, request}) => {
-    test.skip(!(await serverBuild(request)), NO_BUILD_ID);
+    requireBuild(await serverBuild(request));
 
     let checks = 0;
     page.on('requestfinished', (req) => {
@@ -194,7 +204,7 @@ test.describe('a tab and the build that rendered it (ADR-0011)', () => {
     request,
   }) => {
     const current = await serverBuild(request);
-    test.skip(!current, NO_BUILD_ID);
+    requireBuild(current);
 
     // In place before the page loads, so whichever check runs first sees the new build.
     await page.route('**/api/health', (route) =>

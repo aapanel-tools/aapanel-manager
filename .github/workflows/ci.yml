@@ -6,8 +6,8 @@ on:
   pull_request:
 
 # Gate: typecheck · lint · vitest (needs Postgres) · production build.
-# Runs on Ubuntu to match production. Playwright e2e is intentionally out of CI
-# (needs a running server + seeded DB + browsers); run it locally via pnpm test:e2e.
+# Runs on Ubuntu to match production. The Playwright e2e suite has a job of its
+# own (`e2e`) against a production build with a seeded database.
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -64,6 +64,67 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+
+  # Runs the Playwright suite against a production build started the way
+  # production starts it (scripts/run-next.mjs start), with a seeded database and
+  # the stand-in panel from e2e/support — never a real panel. Kept out of CI, the
+  # suite drifted from the app unnoticed (Д-32); here the push that breaks it fails.
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aapanel_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # Job level, not step level: Playwright starts the app from its own
+    # environment. The poller stays off, or it would start polling the servers
+    # the tests add — one of them unroutable on purpose.
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aapanel_e2e?schema=public
+      AUTH_SECRET: ci-only-not-a-real-secret-0123456789abcd
+      APP_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      ENABLE_POLLER: "false"
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Set up pnpm (corepack, pinned)
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.5.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm prisma generate
+      - run: pnpm prisma migrate deploy
+      - name: Seed the administrator the suite signs in as
+        run: pnpm prisma db seed
+      - run: pnpm build
+      - name: Install the browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run the e2e suite
+        run: pnpm test:e2e
+      # Traces of failed tests only. They hold the dummy values above and the
+      # stand-in panel's rows — nothing real to leak.
+      - name: Keep traces of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces
+          path: test-results/
+          retention-days: 7
 
   # Builds the self-update release bundle and proves it works end-to-end:
   # migrate deploy from the unpacked bundle, boot `next start`, hit /api/health.

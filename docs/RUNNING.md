@@ -241,4 +241,7 @@ node scripts/run-next.mjs start   # in another terminal — the suite reuses it
 pnpm test:e2e
 ```
 
-E2E is not part of CI.
+In CI the suite is the `e2e` job of `.github/workflows/ci.yml`: a production
+build started with `node scripts/run-next.mjs start`, a seeded database and the
+stand-in panel. There nothing already running is reused, and the build-id tests
+fail rather than skip when the build has no id.

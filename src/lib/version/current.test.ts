@@ -1,5 +1,5 @@
 import {describe, it, expect, beforeEach, afterEach} from 'vitest';
-import {getCurrentVersion} from './current';
+import {deploymentIdFrom, getCurrentVersion} from './current';
 
 describe('getCurrentVersion', () => {
   const saved = {
@@ -47,5 +47,21 @@ describe('getCurrentVersion', () => {
     expect(getCurrentVersion().deploymentId).toBeNull();
     process.env.NEXT_DEPLOYMENT_ID = '0_7_0-20260914120000-a1b2c3d4';
     expect(getCurrentVersion().deploymentId).toBe('0_7_0-20260914120000-a1b2c3d4');
+  });
+});
+
+describe('deploymentIdFrom', () => {
+  // Next compiles `process.env.NEXT_DEPLOYMENT_ID` into `false` when a build has
+  // no id. process.env cannot hold that — Node turns it into the string "false"
+  // — so the value is handed in directly.
+  it('takes the false of a build without an id for no id, not for a string', () => {
+    expect(deploymentIdFrom(false)).toBeNull();
+    expect(deploymentIdFrom(undefined)).toBeNull();
+    expect(deploymentIdFrom(null)).toBeNull();
+    expect(deploymentIdFrom('   ')).toBeNull();
+  });
+
+  it('keeps a real id, trimmed', () => {
+    expect(deploymentIdFrom(' 0_7_0-20260914120000-a1b2c3d4 ')).toBe('0_7_0-20260914120000-a1b2c3d4');
   });
 });

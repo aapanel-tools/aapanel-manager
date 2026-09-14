@@ -5,6 +5,7 @@ import type {ColumnDef} from '@tanstack/react-table';
 import type {ServerRow} from '@/lib/servers/query';
 import {StatusBadge} from './status-badge';
 import {cpuText, percentText} from './metric-text';
+import {formatTimestamp} from '@/lib/format/datetime';
 
 /** `t` is passed in from the table so headers are translated without a hook here. */
 export function buildColumns(t: (key: string) => string): ColumnDef<ServerRow>[] {
@@ -27,6 +28,8 @@ export function buildColumns(t: (key: string) => string): ColumnDef<ServerRow>[]
       cell: ({row}) => percentText(row.original.disk)},
     {accessorKey: 'baseUrl', header: t('baseUrl'), enableSorting: false, size: 240},
     {id: 'lastCheckedAt', accessorKey: 'lastCheckedAt', header: t('lastChecked'), enableSorting: true, size: 170,
-      cell: ({row}) => (row.original.lastCheckedAt ? new Date(row.original.lastCheckedAt).toLocaleString() : t('never'))},
+      // formatTimestamp, not toLocaleString: the server and the browser format a
+      // locale date differently, and the whole table failed hydration over it.
+      cell: ({row}) => (row.original.lastCheckedAt ? formatTimestamp(row.original.lastCheckedAt) : t('never'))},
   ];
 }

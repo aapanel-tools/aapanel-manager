@@ -1,6 +1,9 @@
 import {test, expect, login, removeServer} from './support/app';
 
 test('admin can add a server, see it in the table, and delete it', async ({page, addServer}) => {
+  // Adds, lists and removes in one test, and the removal waits for the app to
+  // confirm it: on `pnpm dev` under load that took longer than the default 30 s.
+  test.setTimeout(60_000);
   const name = `e2e-${Date.now()}`;
 
   await login(page);
